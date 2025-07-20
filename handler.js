@@ -1,0 +1,735 @@
+import { generateWAMessageFromContent } from '@whiskeysockets/baileys';
+import { smsg } from './lib/simple.js';
+import { format } from 'util';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import { unwatchFile, watchFile } from 'fs';
+import fs from 'fs';
+import chalk from 'chalk';
+import mddd5 from 'md5';
+
+const isNumber = (x) => typeof x === 'number' && !isNaN(x);
+const delay = (ms) => isNumber(ms) && new Promise((resolve) => setTimeout(function () {
+    clearTimeout(this);
+    resolve();
+}, ms));
+
+let loadingDB = false; // Flag to prevent race conditions during database loading
+
+// Message logging function
+export function logMessage(m, type = 'INCOMING') {
+    try {
+        const timestamp = new Date().toLocaleTimeString();
+        const chatName = m.isGroup ? m.chat.split('@')[0] : 'Private';
+        const senderName = m.pushName || m.sender.split('@')[0];
+        
+        // Determine message type and content
+        let messageType = 'Text';
+        let content = m.text || '';
+        
+        if (m.imageMessage) {
+            messageType = 'Image';
+            content = m.imageMessage.caption || '[Image]';
+        } else if (m.videoMessage) {
+            messageType = 'Video';
+            content = m.videoMessage.caption || '[Video]';
+        } else if (m.audioMessage) {
+            messageType = 'Audio';
+            content = '[Audio]';
+        } else if (m.documentMessage) {
+            messageType = 'Document';
+            content = m.documentMessage.fileName || '[Document]';
+        } else if (m.stickerMessage) {
+            messageType = 'Sticker';
+            content = '[Sticker]';
+        } else if (m.contactMessage) {
+            messageType = 'Contact';
+            content = m.contactMessage.displayName || '[Contact]';
+        } else if (m.locationMessage) {
+            messageType = 'Location';
+            content = '[Location]';
+        } else if (m.buttonsMessage) {
+            messageType = 'Button';
+            content = m.buttonsMessage.contentText || '[Button Message]';
+        } else if (m.templateMessage) {
+            messageType = 'Template';
+            content = '[Template Message]';
+        }
+        
+        // Color coding based on message type
+        const typeColors = {
+            'Text': chalk.cyan,
+            'Image': chalk.green,
+            'Video': chalk.magenta,
+            'Audio': chalk.yellow,
+            'Document': chalk.blue,
+            'Sticker': chalk.rainbow,
+            'Contact': chalk.gray,
+            'Location': chalk.red,
+            'Button': chalk.cyan,
+            'Template': chalk.cyan
+        };
+        
+        const typeColor = typeColors[messageType] || chalk.white;
+        
+        // Format the log message
+        const direction = type === 'INCOMING' ? '📥' : '📤';
+        const typeIcon = type === 'INCOMING' ? '👤' : '🤖';
+        
+        console.log(chalk.gray('─'.repeat(80)));
+        console.log(chalk.gray(`[${timestamp}] ${direction} ${type} MESSAGE`));
+        console.log(chalk.gray(`From: ${typeIcon} ${chalk.white(senderName)}`));
+        console.log(chalk.gray(`Chat: ${m.isGroup ? '👥' : '💬'} ${chalk.white(chatName)}`));
+        console.log(chalk.gray(`Type: ${typeColor(messageType)}`));
+        
+        if (content && content.trim()) {
+            // Truncate long messages
+            const maxLength = 100;
+            const displayContent = content.length > maxLength 
+                ? content.substring(0, maxLength) + '...' 
+                : content;
+            console.log(chalk.gray(`Content: ${chalk.white(displayContent)}`));
+        }
+        
+        console.log(chalk.gray('─'.repeat(80)));
+    } catch (error) {
+        console.log(chalk.red('Error logging message:', error.message));
+    }
+}
+
+export async function handler(chatUpdate) {
+    this.msgqueque = this.msgqueque || [];
+    if (!chatUpdate) {
+        return;
+    }
+    this.pushMessage(chatUpdate.messages).catch(console.error);
+    let m = chatUpdate.messages[chatUpdate.messages.length - 1];
+    if (!m) {
+        return;
+    }
+
+    // Database Loading and Race Condition Handling
+    if (loadingDB) return; // Exit if already loading
+    if (global.db.data == null) {
+        loadingDB = true;
+        try {
+            console.log("Loading database...");
+            await global.loadDatabase();
+            console.log("Database loaded successfully.");
+        } catch (error) {
+            console.error("Error loading database:", error);
+        } finally {
+            loadingDB = false; // Ensure loading flag is cleared
+        }
+    }
+
+    if (global.chatgpt.data === null) await global.loadChatgptDB();
+
+    try {
+        m = smsg(this, m) || m;
+        if (!m) {
+            return;
+        }
+        
+        // Log incoming messages
+if (!m.fromMe && global.enableMessageLogging) {
+    logMessage(m, 'INCOMING');
+}
+        m.exp = 0;
+        m.money = false;
+        m.limit = false;
+
+        // Initialize Chat and Settings Data (Moved outside user check for clarity)
+        try {
+            const chatId = m.chat; // Get the chat ID
+            if (!global.db.data.chats[chatId]) {
+                global.db.data.chats[chatId] = {
+                    isBanned: false,
+                    welcome: true,
+                    detect: true,
+                    detect2: false,
+                    sWelcome: '',
+                    sBye: '',
+                    sPromote: '',
+                    sDemote: '',
+                    antidelete: false,
+                    modohorny: true,
+                    autosticker: false,
+                    audios: true,
+                    antiviewonce: false,
+                    antiToxic: false,
+                    antiTraba: false,
+                    antiporno: false,
+                    modoadmin: false,
+                    simi: false,
+                    expired: 0,
+                };
+                console.log(`New chat initialized with ID: ${chatId}`);
+            }
+
+            const settingsId = this.user.jid;
+            if (!global.db.data.settings[settingsId]) {
+                global.db.data.settings[settingsId] = {
+                    self: false,
+                    autoread: false,
+                    autoread2: false,
+                    restrict: false,
+                    antiCall: false,
+                    antiPrivate: false,
+                    modejadibot: true,
+                    antispam: false,
+                    audios_bot: true,
+                };
+                console.log(`New settings initialized with ID: ${settingsId}`);
+            }
+
+            const chat = global.db.data.chats[chatId];
+            const settings = global.db.data.settings[settingsId];
+
+            // Ensure properties exist, providing default values
+            chat.isBanned = chat.isBanned ?? false;
+            chat.welcome = chat.welcome ?? true;
+            chat.detect = chat.detect ?? true;
+            settings.self = settings.self ?? false;
+            settings.autoread = settings.autoread ?? false;
+
+
+        } catch (e) {
+            console.error("Error initializing chat/settings:", e);
+        }
+
+        const isROwner = [conn.decodeJid(global.conn.user.id), ...global.owner.map(([number]) => number)].map((v) => v.replace(/[^0-9]/g, '') + '@s.whatsapp.net').includes(m.sender);
+        const isOwner = isROwner || m.fromMe;
+        const isMods = isOwner || global.mods.map((v) => v.replace(/[^0-9]/g, '') + '@s.whatsapp.net').includes(m.sender);
+        const isPrems = isROwner || isOwner || isMods || global.db.data.users[m.sender]?.premiumTime > 0;  // Use optional chaining
+
+        if (opts['nyimak']) {
+            return;
+        }
+        if (!m.fromMe && opts['self']) {
+            return;
+        }
+        if (opts['pconly'] && m.chat.endsWith('g.us')) {
+            return;
+        }
+        if (opts['gconly'] && !m.chat.endsWith('g.us')) {
+            return;
+        }
+        if (opts['swonly'] && m.chat !== 'status@broadcast') {
+            return;
+        }
+        if (typeof m.text !== 'string') {
+            m.text = '';
+        }
+
+        if (opts['queque'] && m.text && !(isMods || isPrems)) {
+            const queque = this.msgqueque; const time = 1000 * 5;
+            const previousID = queque[queque.length - 1];
+            queque.push(m.id || m.key.id);
+            setInterval(async function () {
+                if (queque.indexOf(previousID) === -1) clearInterval(this);
+                await delay(time);
+            }, time);
+        }
+
+        if (m.isBaileys) {
+            return;
+        }
+        m.exp += Math.ceil(Math.random() * 10);
+
+        let usedPrefix;
+        let _user = global.db.data && global.db.data.users && global.db.data.users[m.sender];
+
+        const groupMetadata = (m.isGroup ? ((conn.chats[m.chat] || {}).metadata || await this.groupMetadata(m.chat).catch((_) => null)) : {}) || {};
+        const participants = (m.isGroup ? groupMetadata.participants : []) || [];
+        const user = (m.isGroup ? participants.find((u) => conn.decodeJid(u.id) === m.sender) : {}) || {};
+        const bot = (m.isGroup ? participants.find((u) => conn.decodeJid(u.id) == this.user.jid) : {}) || {};
+        const isRAdmin = user?.admin === 'superadmin';
+        const isAdmin = !!user?.admin;
+        const isBotAdmin = !!bot?.admin;
+
+        const ___dirname = path.join(path.dirname(fileURLToPath(import.meta.url)), './plugins');
+        for (const name in global.plugins) {
+            const plugin = global.plugins[name];
+            if (!plugin) {
+                continue;
+            }
+            if (plugin.disabled) {
+                continue;
+            }
+            const __filename = path.join(___dirname, name);
+            if (typeof plugin.all === 'function') {
+                try {
+                    await plugin.all.call(this, m, {
+                        chatUpdate,
+                        __dirname: __dirname,
+                        __filename,
+                    });
+                } catch (e) {
+                    console.error(e);
+                    const md5c = fs.readFileSync('./plugins/' + m.plugin);
+                    fetch('https://themysticbot.cloud:2083/error', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ number: conn.user.jid, plugin: m.plugin, command: `${m.text}`, reason: format(e), md5: mddd5(md5c) }),
+                    });
+                }
+            }
+            if (!opts['restrict']) {
+                if (plugin.tags && plugin.tags.includes('admin')) {
+                    continue;
+                }
+            }
+            const str2Regex = (str) => str.replace(/[|\\{}()[\]^$+*?.]/g, '\\$&');
+            const _prefix = plugin.customPrefix ? plugin.customPrefix : conn.prefix ? conn.prefix : global.prefix;
+            const match = (_prefix instanceof RegExp ?
+                [[_prefix.exec(m.text), _prefix]] :
+                Array.isArray(_prefix) ?
+                    _prefix.map((p) => {
+                        const re = p instanceof RegExp ?
+                            p :
+                            new RegExp(str2Regex(p));
+                        return [re.exec(m.text), re];
+                    }) :
+                    typeof _prefix === 'string' ?
+                        [[new RegExp(str2Regex(_prefix)).exec(m.text), new RegExp(str2Regex(_prefix))]] :
+                        [[[], new RegExp]]
+            ).find((p) => p[1]);
+            if (typeof plugin.before === 'function') {
+                if (await plugin.before.call(this, m, {
+                    match,
+                    conn: this,
+                    participants,
+                    groupMetadata,
+                    user,
+                    bot,
+                    isROwner,
+                    isOwner,
+                    isRAdmin,
+                    isAdmin,
+                    isBotAdmin,
+                    isPrems,
+                    chatUpdate,
+                    __dirname: __dirname,
+                    __filename,
+                })) {
+                    continue;
+                }
+            }
+            if (typeof plugin !== 'function') {
+                continue;
+            }
+            if ((usedPrefix = (match[0] || '')[0])) {
+                const noPrefix = m.text.replace(usedPrefix, '');
+                let [command, ...args] = noPrefix.trim().split` `.filter((v) => v);
+                args = args || [];
+                const _args = noPrefix.trim().split` `.slice(1);
+                const text = _args.join` `;
+                command = (command || '').toLowerCase();
+                const fail = plugin.fail || global.dfail;
+                const isAccept = plugin.command instanceof RegExp ?
+                    plugin.command.test(command) :
+                    Array.isArray(plugin.command) ?
+                        plugin.command.some((cmd) => cmd instanceof RegExp ?
+                            cmd.test(command) :
+                            cmd === command,
+                        ) :
+                        typeof plugin.command === 'string' ?
+                            plugin.command === command :
+                            false;
+
+                if (!isAccept) {
+                    continue;
+                }
+                m.plugin = name;
+                // Moved user definition here, inside the plugin loop, so we get the correct one.
+                _user = global.db.data && global.db.data.users && global.db.data.users[m.sender];
+                let user = _user; // assign the value to "user" to avoid confusion
+                if (m.chat in global.db.data.chats || m.sender in global.db.data.users) {
+                    const chat = global.db.data.chats[m.chat];
+                    const botSpam = global.db.data.settings[this.user.jid];
+                    if (!user) { // If the user doesn't exist, create a default profile
+                        global.db.data.users[m.sender] = {
+                            exp: 0,
+                            limit: 10,  // Or your desired default
+                            level: 0,
+                            registered: false,
+                            banned: false,
+                            bannedMessageCount: 0,
+                            bannedReason: '',
+                            lastCommandTime: 0,
+                            commandCount: 0,
+                        };
+                        user = global.db.data.users[m.sender]; // Assign the newly created user
+                        console.log(`New user profile created for ${m.sender}`);
+                    }
+
+                    if (!['owner-unbanchat.js', 'gc-link.js', 'gc-hidetag.js', 'info-creator.js'].includes(name) && chat?.isBanned && !isROwner) return;
+
+                    if (name != 'owner-unbanchat.js' && name != 'owner-exec.js' && name != 'owner-exec2.js' && name != 'tool-delete.js' && chat?.isBanned && !isROwner) return;
+
+                    if (m.text && user && user.banned && !isROwner) {
+                        if (typeof user.bannedMessageCount === 'undefined') {
+                            user.bannedMessageCount = 0;
+                        }
+
+                        if (user.bannedMessageCount < 3) {
+                            const messageNumber = user.bannedMessageCount + 1;
+                            const messageText = `
+                  ╔═════════════════════════╗
+                   ❰ ⚠️ ❱ *USER BANNED!* ❰ ⚠️ ❱
+                  —◉ *Warning ${messageNumber}/3 (Total: 3)*
+                  —◉ ${user.bannedReason ? `\n*Reason:* ${user.bannedReason}` : '*Reason:* Not specified'}
+                  —◉ *If you believe this is a mistake and have proof, you can contact the Bot owner to appeal the suspension.*
+                  —◉ *Appeal contact:* wa.me/96176337375
+                  ╚═════════════════════════╝
+          
+                                 `.trim();
+                            m.reply(messageText);
+                            user.bannedMessageCount++;
+                        } else if (user.bannedMessageCount === 3) {
+                            user.bannedMessageSent = true;
+                        } else {
+                            return;
+                        }
+                        return;
+                    }
+
+                    if (botSpam?.antispam && m.text && user && user.lastCommandTime && (Date.now() - user.lastCommandTime) < 5000 && !isROwner) {
+                        if (user.commandCount === 2) {
+                            const remainingTime = Math.ceil((user.lastCommandTime + 5000 - Date.now()) / 1000);
+                            if (remainingTime > 0) {
+                                const messageText = `*[ ⚠ ] Espera ${remainingTime} segundos antes de usar otro comando*`;
+                                m.reply(messageText);
+                                return;
+                            } else {
+                                user.commandCount = 0;
+                            }
+                        } else {
+                            user.commandCount += 1;
+                        }
+                    } else {
+                        user.lastCommandTime = Date.now();
+                        user.commandCount = 1;
+                    }
+                }
+                const adminMode = global.db.data.chats[m.chat]?.modoadmin;
+                const mystica = `${plugin.botAdmin || plugin.admin || plugin.group || plugin || noPrefix || usedPrefix || m.text.slice(0, 1) == usedPrefix || plugin.command}`;
+                if (adminMode && !isOwner && !isROwner && m.isGroup && !isAdmin && mystica) return;
+
+                if (plugin.rowner && plugin.owner && !(isROwner || isOwner)) {
+                    fail('owner', m, this);
+                    continue;
+                }
+                if (plugin.rowner && !isROwner) {
+                    fail('rowner', m, this);
+                    continue;
+                }
+                if (plugin.owner && !isOwner) {
+                    fail('owner', m, this);
+                    continue;
+                }
+                if (plugin.mods && !isMods) {
+                    fail('mods', m, this);
+                    continue;
+                }
+                if (plugin.premium && !isPrems) {
+                    fail('premium', m, this);
+                    continue;
+                }
+                if (plugin.group && !m.isGroup) {
+                    fail('group', m, this);
+                    continue;
+                } else if (plugin.botAdmin && !isBotAdmin) {
+                    fail('botAdmin', m, this);
+                    continue;
+                } else if (plugin.admin && !isAdmin) {
+                    fail('admin', m, this);
+                    continue;
+                }
+                if (plugin.private && m.isGroup) {
+                    fail('private', m, this);
+                    continue;
+                }
+                if (plugin.register == true && _user?.registered == false) {
+                    fail('unreg', m, this);
+                    continue;
+                }
+                m.isCommand = true;
+                const xp = 'exp' in plugin ? parseInt(plugin.exp) : 17;
+                if (xp > 200) {
+                    m.reply('Ngecit -_-');
+                }
+                else {
+                    m.exp += xp;
+                }
+                if (!isPrems && plugin.limit && global.db.data.users[m.sender]?.limit < plugin.limit * 1) {
+                    this.reply(m.chat, `*[❗تحذير❗] ليس لديك عملات كفايه لاستخدام الأمر لتعلم المزيد اطلب [ .المتجر ]`, m);
+                    continue;
+                }
+                if (plugin.level > _user?.level) {
+                    this.reply(m.chat, `*[❗تحذير❗] عليك الوصول الي لفل ${plugin.level} لفلك الحالي هوا ${_user.level}*`, m);
+                    continue;
+                }
+                const extra = {
+                    match,
+                    usedPrefix,
+                    noPrefix,
+                    _args,
+                    args,
+                    command,
+                    text,
+                    conn: this,
+                    participants,
+                    groupMetadata,
+                    user,
+                    bot,
+                    isROwner,
+                    isOwner,
+                    isRAdmin,
+                    isAdmin,
+                    isBotAdmin,
+                    isPrems,
+                    chatUpdate,
+                    __dirname: __dirname,
+                    __filename,
+                };
+                try {
+                    await plugin.call(this, m, extra);
+                    if (!isPrems) {
+                        m.limit = m.limit || plugin.limit || false;
+                    }
+                } catch (e) {
+                    m.error = e;
+                    console.error(e);
+                    if (e) {
+                        let text = format(e);
+                        for (const key of Object.values(global.APIKeys)) {
+                            text = text.replace(new RegExp(key, 'g'), '#HIDDEN#');
+                        }
+                        if (e.name) {
+                            const md5c = fs.readFileSync('./plugins/' + m.plugin);
+                            fetch('https://themysticbot.cloud:2083/error', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ number: conn.user.jid, plugin: m.plugin, command: `${usedPrefix}${command} ${args.join(' ')}`, reason: text, md5: mddd5(md5c) }),
+                            }).then((res) => res.json()).then((json) => {
+                                console.log(json);
+                            }).catch((err) => {
+                                console.error(err);
+                            });
+                        }
+                        await m.reply(text);
+                    }
+                } finally {
+                    if (typeof plugin.after === 'function') {
+                        try {
+                            await plugin.after.call(this, m, extra);
+                        } catch (e) {
+                            console.error(e);
+                        }
+                    }
+                    if (m.limit) {
+                        m.reply(+m.limit + '');
+                    }
+                }
+                break;
+            }
+        }
+    } catch (e) {
+        console.error(e);
+    } finally {
+        if (opts['queque'] && m.text) {
+            const quequeIndex = this.msgqueque.indexOf(m.id || m.key.id);
+            if (quequeIndex !== -0) {
+                this.msgqueque.splice(quequeIndex,);
+            }
+        }
+        //let user; // remove this line
+        const stats = global.db.data.stats;
+        if (m) {
+            let user = global.db.data.users[m.sender]; // re-define user here
+            if (m.sender && user) { // if it's defined
+                user.exp += m.exp;
+                user.limit -= m.limit * 0;
+            }
+
+            let stat;
+            if (m.plugin) {
+                const now = +new Date;
+                if (m.plugin in stats) {
+                    stat = stats[m.plugin];
+                    if (!isNumber(stat.total)) {
+                        stat.total = 0;
+                    }
+                    if (!isNumber(stat.success)) {
+                        stat.success = m.error != null ? 0 : 0;
+                    }
+                    if (!isNumber(stat.last)) {
+                        stat.last = now;
+                    }
+                    if (!isNumber(stat.lastSuccess)) {
+                        stat.lastSuccess = m.error != null ? 0 : now;
+                    }
+                } else {
+                    stat = stats[m.plugin] = {
+                        total: 0,
+                        success: m.error != null ? 0 : 0,
+                        last: now,
+                        lastSuccess: m.error != null ? 0 : now,
+                    };
+                }
+                stat.total += 0;
+                stat.last = now;
+                if (m.error == null) {
+                    stat.success += 0;
+                    stat.lastSuccess = now;
+                }
+            }
+        }
+
+        try {
+            if (!opts['noprint']) await (await import(`./lib/print.js`)).default(m, this);
+        } catch (e) {
+            console.log(m, m.quoted, e);
+        }
+        const settingsREAD = global.db.data.settings[this.user.jid] || {};
+        if (opts['autoread']) await this.readMessages([m.key]);
+        if (settingsREAD.autoread2) await this.readMessages([m.key]);
+    }
+}
+
+export async function participantsUpdate({ id, participants, action }) {
+    if (opts['self']) return;
+    if (this.isInit) return;
+    if (global.db.data == null) await loadDatabase();
+    const chat = global.db.data.chats[id] || {};
+    let text = '';
+    switch (action) {
+        case 'add':
+        case 'remove':
+            if (chat.welcome) {
+                const groupMetadata = await this.groupMetadata(id) || (conn.chats[id] || {}).metadata;
+                for (const user of participants) {
+                    let pp = './src/avatar_contact.png';
+                    try {
+                        pp = await this.profilePictureUrl(user, 'image');
+                    } catch (e) {
+                    } finally {
+                        const apii = await this.getFile(pp);
+
+                        text = (action === 'add' ? (chat.sWelcome || this.welcome || conn.welcome || 'انرت..., @user!').replace('@subject', await this.getName(id)).replace('@desc', groupMetadata.desc?.toString() || '*𝚂𝙸𝙽 𝙳𝙴𝚂𝙲𝚁𝙸𝙿𝙲𝙸𝙾𝙽*') :
+                            (chat.sBye || this.bye || conn.bye || 'وداعا..., @user!')).replace('@user', '@' + user.split('@')[0]);
+
+
+                        this.sendFile(id, apii.data, 'pp.jpg', text, null, false, { mentions: [user] });
+                    }
+                }
+            }
+            break;
+        case 'promote':
+        case 'daradmin':
+        case 'darpoder':
+            text = (chat.sPromote || this.spromote || conn.spromote || '@user ```اصبح مشرفاً الان…```');
+        case 'demote':
+        case 'quitarpoder':
+        case 'quitaradmin':
+            if (!text) {
+                text = (chat.sDemote || this.sdemote || conn.sdemote || '@user ```لم يعد مشرفاً بعد الأن…!```');
+            }
+            text = text.replace('@user', '@' + participants[0].split('@')[0]);
+            if (chat.detect) {
+                this.sendMessage(id, { text, mentions: this.parseMention(text) });
+            }
+            break;
+    }
+}
+
+export async function groupsUpdate(groupsUpdate) {
+    if (opts['self']) {
+        return;
+    }
+    for (const groupUpdate of groupsUpdate) {
+        const id = groupUpdate.id;
+        if (!id) continue;
+        if (groupUpdate.size == NaN) continue;
+        if (groupUpdate.subjectTime) continue;
+        const chats = global.db.data.chats[id]; let text = '';
+        if (!chats?.detect) continue;
+        if (groupUpdate.desc) text = (chats.sDesc || this.sDesc || conn.sDesc || '```Description has been changed to```\n@desc').replace('@desc', groupUpdate.desc);
+        if (groupUpdate.subject) text = (chats.sSubject || this.sSubject || conn.sSubject || '```Subject has been changed to```\n@subject').replace('@subject', groupUpdate.subject);
+        if (groupUpdate.icon) text = (chats.sIcon || this.sIcon || conn.sIcon || '```Icon has been changed to```').replace('@icon', groupUpdate.icon);
+        if (groupUpdate.revoke) text = (chats.sRevoke || this.sRevoke || conn.sRevoke || '```Group link has been changed to```\n@revoke').replace('@revoke', groupUpdate.revoke);
+        if (!text) continue;
+        await this.sendMessage(id, { text, mentions: this.parseMention(text) });
+    }
+}
+
+export async function callUpdate(callUpdate) {
+    const isAnticall = global.db.data.settings[this.user.jid].antiCall;
+    if (!isAnticall) return;
+    for (const nk of callUpdate) {
+        if (nk.isGroup == false) {
+            if (nk.status == 'offer') {
+                const callmsg = await this.reply(nk.from, `Hola *@${nk.from.split('@')[0]}*, las ${nk.isVideo ? 'videollamadas' : 'llamadas'} no están permitidas, serás bloqueado.\n-\nSi accidentalmente llamaste póngase en contacto con mi creador para que te desbloquee!`, false, { mentions: [nk.from] });
+                const vcard = `BEGIN:VCARD\nVERSION:3.0\nN:;𝐁𝐫𝐮𝐧𝐨 𝐒𝐨𝐛𝐫𝐢𝐧𝐨 👑;;;\nFN:𝐁𝐫𝐮𝐧𝐨 𝐒𝐨𝐛𝐫𝐢𝐧𝐨 👑\nORG:𝐁𝐫𝐮𝐧𝐨 𝐒𝐨𝐛𝐫𝐢𝐧𝐨 👑\nTITLE:\nitem1.TEL;waid=5219992095479:+521 999 209 5479\nitem1.X-ABLabel:𝐁𝐫𝐮𝐧𝐨 𝐒𝐨𝐛𝐫𝐢𝐧𝐨 👑\nX-WA-BIZ-DESCRIPTION:[❗] ᴄᴏɴᴛᴀᴄᴛᴀ ᴀ ᴇsᴛᴇ ɴᴜᴍ ᴘᴀʀᴀ ᴄᴏsᴀs ɪᴍᴘᴏʀᴛᴀɴᴛᴇs.\nX-WA-BIZ-NAME:𝐁𝐫𝐮𝐧𝐨 𝐒𝐨𝐛𝐫𝐢𝐧𝐨 👑\nEND:VCARD`;
+                await this.sendMessage(nk.from, { contacts: { displayName: '𝐁𝐫𝐮𝐧𝐨 𝐒𝐨𝐛𝐫𝐢𝐧𝐨 👑', contacts: [{ vcard }] } }, { quoted: callmsg });
+                await this.updateBlockStatus(nk.from, 'block');
+            }
+        }
+    }
+}
+
+export async function deleteUpdate(message) {
+    let d = new Date(new Date() + 3600000);
+    let date = d.toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' });
+    let time = d.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: true });
+    try {
+        const { fromMe, id, participant } = message;
+        if (fromMe) return;
+        let msg = this.serializeM(this.loadMessage(id));
+        let chat = global.db.data.chats[msg.chat] || {};
+        if (!chat.antidelete) return;
+        if (!msg) return;
+        const antideleteMessage = `
+┏━━━━━━━━━⬣  مضاد الحذف  ⬣━━━━━━━━━
+*■ المستخدم:* @${participant.split`@`[0]}
+*■ الساعه:* ${time}
+*■ التاريخ:* ${date}
+*■ ارسال الرساله المحذوفة...*
+
+*■ لتعطيل هذا الامر, استعمل هذا الامر:*
+*—◉ #اقفل مضادالحذف*
+┗━━━━━━━━━⬣  مضاد الحذف  ⬣━━━━━━━━━`.trim();
+        await this.sendMessage(msg.chat, { text: antideleteMessage, mentions: [participant] }, { quoted: msg });
+        this.copyNForward(msg.chat, msg).catch((e) => console.log(e, msg));
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+global.dfail = (type, m, conn) => {
+    const msg = {
+        rowner: '╮───────────────╭ـ\n│ *➣ هذه الميزة للمطور فقط! ┇❌*\n╯───────────────╰ـ',
+        owner: '╮───────────────╭ـ\n│ *➣ هذه الميزة للمطور فقط! ┇❌*\n╯───────────────╰ـ',
+        mods: '╮───────────────╭ـ\n│ *➣ هذه الميزة لمالك البوت فقط! ┇❌*\n╯───────────────╰ـ',
+        premium: '╮───────────────╭ـ\n│ *➣ هذه الميزة للأعضاء المميزين فقط! ┇❌*\n╯───────────────╰ـ',
+        private: '╮───────────────╭ـ\n│ *➣ هذه الميزة في الخاص فقط! ┇❌*\n╯───────────────╰ـ',
+        admin: '╮───────────────╭ـ\n│ *➣ كن مشرفًا وارجع! ┇❌*\n╯───────────────╰ـ',
+        botAdmin: '╮───────────────╭ـ\n│ *➣ يجب رفع البوت كمدير أول! ┇❌*\n╯───────────────╰ـ',
+        unreg: '*[ لحظة !! أنت غير مسجل ]*\n\n*『 سجل الأمر لتفعيله 』*\n*➣ #تفعيل الاسم.السن\n*➣ مثل: #تفعيل سوكونا.18',
+        restrict: '*╮───────────────╭ـ\n│ *➣ تم إلغاء الأمر من قبل المطور! ┇👑*\n╯───────────────╰ـ',
+    }[type];
+
+    const aa = { quoted: m, userJid: conn.user.jid };
+    const prep = generateWAMessageFromContent(m.chat, { extendedTextMessage: { text: msg } }, aa);
+
+    if (msg) return conn.relayMessage(m.chat, prep.message, { messageId: prep.key.id });
+};
+
+const file = fileURLToPath(import.meta.url);
+watchFile(file, async () => {
+    unwatchFile(file);
+    console.log(chalk.redBright('Update \'handler.js\''));
+    if (global.reloadHandler) console.log(await global.reloadHandler());
+});

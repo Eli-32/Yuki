@@ -9,9 +9,7 @@ RUN sed -i 's|http://deb.debian.org/debian|http://archive.debian.org/debian|g' /
 
 COPY package.json .
 
-RUN npm install && npm install qrcode-terminal
-
-COPY . .
+RUN npm install --legacy-peer-deps && npm install qrcode-terminal --legacy-peer-depsCOPY . .
 
 EXPOSE 5000
 

@@ -1,46 +1,44 @@
-let handler = async (m, { conn, usedPrefix, command, text }) => {
-    if (m.fromMe) {
-      return true
-    }
-  
-    let number;
-    
-    if (text) {
-      if (isNaN(text)) {
-        if (text.includes('@')) {
-          number = text.split`@`[1];
-        } else {
-          return conn.reply(m.chat, `✳️ Invalid number format`, m);
-        }
+// import { getWhatsAppNumber } from '../lib/simple.js';
+
+let handler = async (m, { conn, participants, groupMetadata, args, usedPrefix, command, text }) => {
+  const chat = global.db.data.chats[m.chat] || {};
+  const groupMeta = await conn.groupMetadata(m.chat);
+  const admins = groupMeta.participants.filter(p => p.admin);
+  const isAdmin = admins.some(a => a.id === m.sender);
+  const isBotAdmin = admins.some(a => a.id === conn.user.jid);
+
+  if (!isAdmin) return conn.reply(m.chat, '❗ يجب أن تكون مديرًا لاستخدام هذا الأمر.', m);
+  if (!isBotAdmin) return conn.reply(m.chat, '❗ يجب أن يكون البوت مديرًا لتنفيذ هذا الأمر.', m);
+
+  let number;
+  if (text) {
+    if (isNaN(text)) {
+      if (text.match(/@/g)) {
+        number = text.replace(/[^0-9]/g, '');
       } else {
-        number = text;
+        return conn.reply(m.chat, '❗ يرجى تحديد رقم صحيح أو منشن مستخدم.', m);
       }
-    } else if (m.quoted) {
-      number = m.quoted.sender.split`@`[0];
+    } else {
+      number = text;
     }
-  
-    if (!number)
-      return conn.reply(
-        m.chat,
-        `✳️ Use the command \n *${usedPrefix + command}* @tag (or reply to a message)`,
-        m
-      );
-  
-    if (number.length > 13 || number.length < 11)
-      return conn.reply(m.chat, `✳️ Number incorrect`, m);
-  
-    try {
-      let user = `${number}@s.whatsapp.net`;
-      await conn.groupParticipantsUpdate(m.chat, [user], 'promote');
-      const promoter = m.sender.split('@')[0];
-      const promoted = user.split('@')[0];
-      const message = `+${promoter} has promoted +${promoted}`;
-      conn.reply(m.chat, message, m);
-    } catch (e) {
-      console.error(e);
-      m.reply(`❌ Failed to promote user`);
-    }
-  };
+  } else if (m.quoted) {
+    number = m.quoted.sender.split('@')[0];
+  } else {
+    return conn.reply(m.chat, `❗ استخدم الأمر هكذا: *${usedPrefix + command}* @tag أو رد على رسالة المستخدم`, m);
+  }
+
+  if (!number || number.length > 15 || number.length < 5) {
+    return conn.reply(m.chat, '❗ رقم غير صحيح.', m);
+  }
+
+  try {
+    const user = number + '@s.whatsapp.net';
+    await conn.groupParticipantsUpdate(m.chat, [user], 'promote');
+    m.reply(`تم ترقية ${number} إلى مدير.`);
+  } catch (e) {
+    conn.reply(m.chat, `❌ فشل في ترقية المستخدم: ${e.message}`, m);
+  }
+}
   
   handler.help = ['promote'];
   handler.tags = ['group'];

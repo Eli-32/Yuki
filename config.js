@@ -6,7 +6,7 @@ import fs from 'fs';
 import moment from 'moment-timezone';
 
 // Define global variables
-global.owner = [['96176337375', 'Elta', true]];
+global.owner = [['96176337375','+966535993926', 'Elta', true]];
 global.xaxa = 'kaneki';
 global.suittag = ['96176337375'];
 global.prems = ['96176337375'];

@@ -22,6 +22,8 @@ const menus = {
     🗑️ *.حذف_لقب* (حذف لقب مستخدم)
     🔔 *.منشن* (منشن الجميع)
     🔓 *.فتح|قفل* (فتح أو قفل المجموعة)
+    ⚠️ *.تحذير* (تحذير مستخدم)
+    📊 *.تحذيرات* (عرض تحذيرات المستخدم)
     ╰──────────⳹`,
 
     gamemenu: `✦ ───『 *الألعاب* 』─── ⚝
@@ -33,6 +35,7 @@ const menus = {
     🔤 *.ص* (لعبة الصور)
     📖 *.كت* (لعبة الكتابة)
     🎲 *.تع|سس* (ألعاب التحدي)
+    🎯 *.س* (أسئلة عشوائية)
     🔢 *.كت <عدد>* (مثال: .كت 3 - يعطيك 3 أسماء لترجعها اكتب .كت)
     ╰──────────⳹`,
 
@@ -44,6 +47,32 @@ const menus = {
     📜 *.لقبه* (عرض لقب المستخدم)
     🎨 *.ملصق* (إنشاء ملصق)
     📜 *.منيو|اوامر|menu* (عرض القائمة)
+    🏃 *.speedtest* (اختبار السرعة)
+    🖼️ *.ص* (صور عشوائية)
+    ╰──────────⳹`,
+
+    ownermenu: `✦ ───『 *أوامر المالك* 』─── 👑
+    🔄 *.restart* (إعادة تشغيل البوت)
+    📝 *.logon* (تفعيل تسجيل الرسائل)
+    📝 *.logoff* (إيقاف تسجيل الرسائل)
+    📊 *.logstatus* (حالة التسجيل)
+    🚫 *.banuser* (حظر مستخدم)
+    ✅ *.unbanuser* (إلغاء حظر مستخدم)
+    🚫 *.banchat* (حظر مجموعة)
+    ✅ *.unbanchat* (إلغاء حظر مجموعة)
+    🛡️ *.admin-control* (حماية المشرفين)
+    👤 *.owner* (معلومات المالك)
+    ╰──────────⳹`,
+
+    toolsmenu: `✦ ───『 *أدوات مساعدة* 』─── 🛠️
+    🎨 *.تحسين* (تحسين الصور)
+    🌫️ *.dehaze* (إزالة الضباب)
+    🎨 *.recolor* (إعادة تلوين)
+    🖼️ *.لصورة* (تحويل ملصق إلى صورة)
+    📹 *.لفيد* (تحويل ملصق إلى فيديو)
+    🎴 *.ملصق* (إنشاء ملصق)
+    🏃 *.speedtest* (اختبار سرعة الإنترنت)
+    🖼️ *.ص* (صور عشوائية)
     ╰──────────⳹`
 };
 
@@ -70,7 +99,7 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
 
         let _uptime = process.uptime() * 1000;
         let _muptime;
-        if (process.send) {
+        if (typeof process.send === 'function') {
             process.send("uptime");
             _muptime = await new Promise(resolve => {
                 process.once("message", resolve);
@@ -95,6 +124,11 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
             }
         };
 
+        // Get owner information dynamically from global.owner array
+        const ownerInfo = global.owner[0]; // Get first owner
+        const ownerName = ownerInfo[1];
+        const ownerNumber = ownerInfo[0];
+
         const infoText = `
         ${botname} 
         Hi ${name}, Senpai!
@@ -103,13 +137,15 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
 
         乂───『 *U S E R*』───乂
         ⛥ *Rank:* User
-        ⛥ *Owner:* Elta/+96176337375
+        ⛥ *Owner:* ${ownerName}/+${ownerNumber}
         ╰──────────⳹
 
 ╭───────⳹
 │ ✨ *1.* قائمة المشرفين (Admins Menu)
 │ 🎮 *2.* قائمة الالعاب (Games Menu)
 │ 👤 *3.* قائمة المستخدمين (Users Menu)
+│ 👑 *4.* أوامر المالك (Owner Menu)
+│ 🛠️ *5.* أدوات مساعدة (Tools Menu)
 ╰───────⳹
 `;
 
@@ -148,14 +184,18 @@ handler.before = async (m, { conn }) => {
         const menuOptions = {
             "1": "adminsmenu",
             "2": "gamemenu",
-            "3": "usermenu" 
+            "3": "usermenu",
+            "4": "ownermenu",
+            "5": "toolsmenu"
         };
 
         if (menuOptions[choice]) {
             await sendMenu(menuOptions[choice]);
-        } else {
-            m.reply('Invalid choice. Please reply with a valid number.');
+        } else if (/^\d+$/.test(choice)) {
+            // Only reply if it's a number but not in menu
+            m.reply('Invalid choice. Please reply with a valid number (1-5).');
         }
+        // If not a number, do nothing (let it be normal chat)
 
         // Add reaction to the message
         await conn.sendMessage(m.chat, { react: { text: '👍', key: m.key } });

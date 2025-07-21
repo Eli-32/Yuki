@@ -2,7 +2,7 @@ console.log('Iniciando 🚀🚀🚀')
 import { join, dirname } from "path";
 import { createRequire } from "module";
 import { fileURLToPath } from "url";
-import { setupMaster, fork } from "cluster";
+import cluster from "cluster";
 import { watchFile, unwatchFile } from "fs";
 import cfonts from "cfonts";
 import chalk from "chalk";
@@ -29,15 +29,15 @@ var isRunning = false;
 * @param {String} file `path/to/file`
 */
 function start(file) {
-if (isRunning) return
-isRunning = true;
-let args = [join(__dirname, file), ...process.argv.slice(2)]
+  if (isRunning) return
+  isRunning = true;
+  let args = [join(__dirname, file), ...process.argv.slice(2)]
 
-setupMaster({
-exec: args[0],
-args: args.slice(1),
-})
-let p = fork()
+  cluster.setupMaster({
+    exec: args[0],
+    args: args.slice(1),
+  })
+  let p = cluster.fork()
 p.on('message', data => {
 console.log('╭--------- - - - ✓\n┆ ✅ Runinng\n╰-------------------- - - -', data)
 switch (data) {

@@ -285,19 +285,30 @@ async function connectionUpdate(update) {
     return;
   }
 
+  // === Robust reconnection logic ===
+  let reconnectAttempts = global.reconnectAttempts || 0;
+  const MAX_RECONNECT_ATTEMPTS = 10;
   if (code && code !== DisconnectReason.loggedOut && conn?.ws.socket == null) {
-    console.log(chalk.red(`Connection error: ${code}`));
-    await global.reloadHandler(true).catch(console.error);
-    global.timestamp.connect = new Date();
+    reconnectAttempts++;
+    global.reconnectAttempts = reconnectAttempts;
+    if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
+      console.log(chalk.red(`Connection error: ${code}. Attempting to reconnect (${reconnectAttempts})...`));
+      setTimeout(async () => {
+        await global.reloadHandler(true).catch(console.error);
+        global.timestamp.connect = new Date();
+      }, Math.min(30000, 2000 * reconnectAttempts)); // Exponential backoff, max 30s
+    } else {
+      console.log(chalk.red('Max reconnect attempts reached. Please check your internet or session.'));
+    }
+    return;
   }
-
-  if (global.db.data == null) loadDatabase();
-
+  // On successful connect, reset attempts and update startTime
   if (connection === 'open') {
+    global.reconnectAttempts = 0;
+    global.startTime = Date.now();
     console.log(chalk.green('✅ Successfully connected to WhatsApp'));
     console.log(chalk.cyan(`👤 Connected as: ${conn.user?.name || 'Unknown'}`));
     console.log(chalk.cyan(`📱 Phone: ${conn.user?.id || 'Unknown'}`));
-    
     // Set status after successful connection
     setTimeout(async () => {
       try {

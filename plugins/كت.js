@@ -41,6 +41,9 @@ function arabicToEnglishNumeral(arabicNumeral) {
  */
 
 /******  61e91366-64f6-4a9d-a3f2-e0875e7a6036  *******/
+handler.help = ['كت (أرسل .كت أو .كت <عدد> للحصول على أسماء عشوائية، فقط المشرفين يمكنهم تغيير العدد)'];
+handler.tags = ['game'];
+handler.command = /^كت$/i;
 handler.all = async function(m) {
 let names= [
           'لوفي', 'ناروتو', 'سابو', 'ايس', 'رايلي', 'جيرايا', 'ايتاتشي', 'ساسكي', 'شيسوي', 'يوهان',

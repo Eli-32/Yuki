@@ -7,6 +7,8 @@ import { unwatchFile, watchFile } from 'fs';
 import fs from 'fs';
 import chalk from 'chalk';
 import mddd5 from 'md5';
+import { jidDecode } from '@whiskeysockets/baileys';
+import jidTransformer from './lib/jidTransformer.js';
 
 const isNumber = (x) => typeof x === 'number' && !isNaN(x);
 const delay = (ms) => isNumber(ms) && new Promise((resolve) => setTimeout(function () {
@@ -108,6 +110,12 @@ export async function handler(chatUpdate) {
         return;
     }
 
+    // === Ignore old messages to prevent spam after reconnect ===
+    const BOT_START_BUFFER = 10000; // 10 seconds
+    if (typeof global.startTime === 'number' && m.messageTimestamp && (m.messageTimestamp * 1000) < (global.startTime - BOT_START_BUFFER)) {
+        return; // Ignore this message
+    }
+
     // Database Loading and Race Condition Handling
     if (loadingDB) return; // Exit if already loading
     if (global.db.data == null) {
@@ -135,6 +143,26 @@ export async function handler(chatUpdate) {
 if (!m.fromMe && global.enableMessageLogging) {
     logMessage(m, 'INCOMING');
 }
+
+        // Build JID mappings automatically using JID Transformer
+        if (jidTransformer && m.sender) {
+          try {
+            // Process the message to extract all JID mappings
+            jidTransformer.processMessage(m, this);
+            
+            // If this is a group, update group participants mapping
+            if (m.isGroup && m.chat) {
+              const groupMetadata = await this.groupMetadata(m.chat).catch(() => null);
+              if (groupMetadata && groupMetadata.participants) {
+                jidTransformer.updateGroupParticipants(m.chat, groupMetadata.participants);
+              }
+            }
+            
+          } catch (error) {
+            // Silent error handling
+          }
+        }
+
         m.exp = 0;
         m.money = false;
         m.limit = false;
@@ -364,9 +392,29 @@ if (!m.fromMe && global.enableMessageLogging) {
                         console.log(`New user profile created for ${m.sender}`);
                     }
 
-                    if (!['owner-unbanchat.js', 'gc-link.js', 'gc-hidetag.js', 'info-creator.js'].includes(name) && chat?.isBanned && !isROwner) return;
+                    if (!['owner-unbanchat.js', 'gc-link.js', 'gc-hidetag.js', 'info-creator.js', 'banchat.js', 'unban.js', 'banstatus.js', 'owner-test.js', 'test-ban.js'].includes(name) && chat?.isBanned && !isROwner) return;
 
-                    if (name != 'owner-unbanchat.js' && name != 'owner-exec.js' && name != 'owner-exec2.js' && name != 'tool-delete.js' && chat?.isBanned && !isROwner) return;
+                    if (name != 'owner-unbanchat.js' && name != 'owner-exec.js' && name != 'owner-exec2.js' && name != 'tool-delete.js' && name != 'banchat.js' && name != 'unban.js' && name != 'banstatus.js' && name != 'owner-test.js' && name != 'test-ban.js' && chat?.isBanned && !isROwner) return;
+
+                    // Show ban message for banned chats (only for non-owner commands)
+                    if (chat?.isBanned && !isROwner && !['banchat.js', 'unban.js', 'banstatus.js', 'owner-test.js', 'test-ban.js', 'owner-unbanchat.js', 'owner-exec.js', 'owner-exec2.js', 'tool-delete.js', 'gc-link.js', 'gc-hidetag.js', 'info-creator.js'].includes(name)) {
+                        const banMessage = `🚫 *CHAT BANNED!*
+
+⚠️ *This chat is currently banned from using bot commands.*
+
+📝 *Chat Info:*
+• *Chat ID:* ${m.chat}
+• *Chat Name:* ${m.isGroup ? m.chat.split('@')[0] : 'Private Chat'}
+• *Banned At:* ${new Date().toLocaleString()}
+
+🔓 *To unban this chat, contact a bot owner using:*
+• *.unbanchat* (if you're an owner)
+
+📞 *Contact:* wa.me/96176337375`;
+                        
+                        m.reply(banMessage);
+                        return;
+                    }
 
                     if (m.text && user && user.banned && !isROwner) {
                         if (typeof user.bannedMessageCount === 'undefined') {
@@ -536,6 +584,18 @@ if (!m.fromMe && global.enableMessageLogging) {
                 break;
             }
         }
+        // === Call all plugins with command: false (global listeners, e.g. yuki.js) ===
+        for (const name in global.plugins) {
+            const plugin = global.plugins[name];
+            if (!plugin || plugin.disabled) continue;
+            if (plugin.command === false && typeof plugin.handler === 'function') {
+                try {
+                    await plugin.handler.call(this, m, { conn: this });
+                } catch (e) {
+                    console.error(`Error in global plugin ${name}:`, e);
+                }
+            }
+        }
     } catch (e) {
         console.error(e);
     } finally {
@@ -603,6 +663,16 @@ export async function participantsUpdate({ id, participants, action }) {
     if (opts['self']) return;
     if (this.isInit) return;
     if (global.db.data == null) await loadDatabase();
+    
+    // Update JID transformer with group participants
+    if (jidTransformer && participants && participants.length > 0) {
+      try {
+        jidTransformer.updateGroupParticipants(id, participants);
+      } catch (error) {
+        // Silent error handling
+      }
+    }
+    
     const chat = global.db.data.chats[id] || {};
     let text = '';
     switch (action) {

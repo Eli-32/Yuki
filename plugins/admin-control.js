@@ -1,6 +1,30 @@
 // WhatsApp Admin Monitor Plugin
 // Pure monitoring - watches for unauthorized admin changes and punishes them
 
+import { jidDecode } from '@whiskeysockets/baileys';
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+dotenv.config({ path: './api.env' });
+
+// MongoDB connection
+if (!mongoose.connection.readyState) {
+  mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000
+  }).then(() => console.log('✅ Connected to MongoDB (admin-control)'))
+    .catch((err) => console.error('❌ MongoDB connection error (admin-control):', err.message));
+}
+
+// GroupProtection model
+const groupProtectionSchema = new mongoose.Schema({
+  groupId: { type: String, required: true, unique: true },
+  isActive: { type: Boolean, default: false },
+  startedAt: { type: Date },
+  stoppedAt: { type: Date }
+});
+const GroupProtection = mongoose.models.GroupProtection || mongoose.model('GroupProtection', groupProtectionSchema);
+
 const adminMonitor = {
     isActive: false,
     sock: null,
@@ -46,12 +70,11 @@ async function monitorAdminChanges(sock, update) {
         const groupMetadata = await sock.groupMetadata(groupId);
         const botNumber = sock.user.id.replace(/:\d+/, '');
         const creator = groupMetadata.owner;
-        const botCreator = '96176337375@s.whatsapp.net'; // Bot owner/creator
         
-        // Check if action was done by authorized users
+        // Fix: Check if author is any of the bot owners from global.owner array
         const authorIsBot = author.includes(botNumber);
         const authorIsGroupCreator = author.includes(creator);
-        const authorIsBotCreator = author.includes(botCreator);
+        const authorIsBotCreator = global.owner.some(ownerArray => author.includes(ownerArray[0] + '@s.whatsapp.net'));
         
         // If authorized, allow the action
         if (authorIsBot || authorIsGroupCreator || authorIsBotCreator) {
@@ -73,10 +96,14 @@ async function punishUnauthorizedUser(sock, groupId, perpetrator, affectedUsers,
     try {
         console.log(`🚨 PUNISHING UNAUTHORIZED ${action.toUpperCase()} by ${perpetrator}`);
         
+        // Use jidDecode for proper phone number display
+        const perpetratorDecoded = jidDecode(perpetrator);
+        const perpetratorNumber = perpetratorDecoded ? perpetratorDecoded.user : perpetrator.split('@')[0];
+        
         // Send warning
         await sock.sendMessage(groupId, {
             text: `🚨 **SECURITY VIOLATION DETECTED** 🚨\n\n` +
-                  `@${perpetrator.split('@')[0]} made unauthorized ${action} action!\n\n` +
+                  `@${perpetratorNumber} made unauthorized ${action} action!\n\n` +
                   `⚡ Executing punishment...`,
             mentions: [perpetrator]
         });
@@ -99,7 +126,7 @@ async function punishUnauthorizedUser(sock, groupId, perpetrator, affectedUsers,
             
             await sock.sendMessage(groupId, {
                 text: `✅ **Justice Served!**\n\n` +
-                      `• @${perpetrator.split('@')[0]} has been demoted\n` +
+                      `• @${perpetratorNumber} has been demoted\n` +
                       `• Unauthorized promotions reversed\n` +
                       `• Only group creator and bot can manage admins`,
                 mentions: [perpetrator, ...affectedUsers]
@@ -107,7 +134,7 @@ async function punishUnauthorizedUser(sock, groupId, perpetrator, affectedUsers,
         } else {
             await sock.sendMessage(groupId, {
                 text: `✅ **Perpetrator Punished!**\n\n` +
-                      `@${perpetrator.split('@')[0]} has been demoted for unauthorized demote action!\n\n` +
+                      `@${perpetratorNumber} has been demoted for unauthorized demote action!\n\n` +
                       `Only group creator and bot can manage admins.`,
                 mentions: [perpetrator]
             });
@@ -127,15 +154,14 @@ async function isAuthorizedAdmin(conn, groupId, userId) {
         const groupMetadata = await conn.groupMetadata(groupId);
         const botNumber = conn.user.id.replace(/:\d+/, '');
         const creator = groupMetadata.owner;
-        const botCreator = '96176337375@s.whatsapp.net'; // Bot owner/creator
         
         // Check if user is:
         // 1. Group creator
         // 2. Bot itself
-        // 3. Bot creator/owner
+        // 3. Bot creator/owner (from global.owner array)
         const isGroupCreator = userId.includes(creator);
         const isBot = userId.includes(botNumber);
-        const isBotCreator = userId.includes(botCreator);
+        const isBotCreator = global.owner.some(ownerArray => userId.includes(ownerArray[0] + '@s.whatsapp.net'));
         
         return isGroupCreator || isBot || isBotCreator;
     } catch (error) {
@@ -145,38 +171,57 @@ async function isAuthorizedAdmin(conn, groupId, userId) {
 }
 
 // Control functions
-function startProt() {
+async function startProt() {
     if (adminMonitor.isActive) {
         console.log('⚠️  Admin Protection is already running!');
         return false;
     }
-    
     if (!adminMonitor.sock) {
         console.log('❌ Socket not initialized. Call initialize() first.');
         return false;
     }
-    
     // Add the event listener
     adminMonitor.sock.ev.on('group-participants.update', adminMonitor.eventHandler);
     adminMonitor.isActive = true;
     adminMonitor.stats.startTime = new Date();
-    
+    // Save to MongoDB
+    try {
+      const groupId = adminMonitor.sock.user.id;
+      await GroupProtection.findOneAndUpdate(
+        { groupId },
+        { isActive: true, startedAt: new Date(), stoppedAt: null },
+        { upsert: true, new: true }
+      );
+      console.log('🟢 Group protection status saved to DB:', groupId);
+    } catch (err) {
+      console.error('❌ Failed to save group protection status:', err.message);
+    }
     console.log('🟢 Admin Protection STARTED - Now watching for unauthorized admin changes');
     return true;
 }
 
-function stopProt() {
+async function stopProt() {
     if (!adminMonitor.isActive) {
         console.log('⚠️  Admin Protection is already stopped!');
         return false;
     }
-    
     // Remove the event listener
     if (adminMonitor.sock && adminMonitor.eventHandler) {
         adminMonitor.sock.ev.off('group-participants.update', adminMonitor.eventHandler);
     }
     adminMonitor.isActive = false;
-    
+    // Save to MongoDB
+    try {
+      const groupId = adminMonitor.sock.user.id;
+      await GroupProtection.findOneAndUpdate(
+        { groupId },
+        { isActive: false, stoppedAt: new Date() },
+        { upsert: true, new: true }
+      );
+      console.log('🔴 Group protection status updated in DB:', groupId);
+    } catch (err) {
+      console.error('❌ Failed to update group protection status:', err.message);
+    }
     console.log('🔴 Admin Protection STOPPED - No longer monitoring admin changes');
     return true;
 }
@@ -242,7 +287,7 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
                     return m.reply('❌ Only group creator, bot creator, and bot can control protection settings!');
                 }
                 
-                const started = startProt();
+                const started = await startProt();
                 const startMsg = started ? 
                     '🟢 **Admin Protection STARTED**\n\nNow monitoring for unauthorized admin changes!' :
                     '⚠️ Admin Protection is already running!';
@@ -254,7 +299,7 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
                     return m.reply('❌ Only group creator, bot creator, and bot can control protection settings!');
                 }
                 
-                const stopped = stopProt();
+                const stopped = await stopProt();
                 const stopMsg = stopped ? 
                     '🔴 **Admin Protection STOPPED**\n\nNo longer monitoring admin changes.' :
                     '⚠️ Admin Protection is already stopped!';

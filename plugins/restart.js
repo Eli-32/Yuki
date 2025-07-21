@@ -1,4 +1,6 @@
 import { spawn } from 'child_process'
+import { jidDecode } from '@whiskeysockets/baileys';
+
 let handler = async (m, { conn, isROwner, text }) => {
   // --- TEMPORARY DEBUGGING START (DO NOT REMOVE FOR NOW) ---
   console.log('====================================================');
@@ -25,8 +27,12 @@ let handler = async (m, { conn, isROwner, text }) => {
 
   if (actualSenderJid) {
     try {
-      senderNumber = actualSenderJid.split('@')[0];
-      isActualOwner = global.owner.includes(senderNumber);
+      // Use jidDecode for proper phone number extraction
+      const decoded = jidDecode(actualSenderJid);
+      senderNumber = decoded ? decoded.user : actualSenderJid.split('@')[0];
+      
+      // Fix: Check if the sender number exists in any of the owner arrays
+      isActualOwner = global.owner.some(ownerArray => ownerArray[0] === senderNumber);
       console.log('6. Extracted Sender Number (from JID):', senderNumber);
       console.log('7. Is extracted number in global.owner?', isActualOwner);
     } catch (e) {
@@ -39,9 +45,10 @@ let handler = async (m, { conn, isROwner, text }) => {
   console.log('====================================================');
   // --- TEMPORARY DEBUGGING END ---
 
-  if (!process.send) {
-    throw 'Error: Bot process not connected. Make sure you run with `node index.js` or similar process manager.';
+  if (typeof process.send !== 'function') {
+    return m.reply('❌ لا يمكن إعادة تشغيل البوت في هذا الوضع.');
   }
+  process.send('reset');
 
   if (isActualOwner) {
     await m.reply('🔄 Restarting Bot...\n Wait a moment');

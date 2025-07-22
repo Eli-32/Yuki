@@ -2,3 +2,5 @@ node_modules
 database.json
 package-lock.json
 MyninoSession
+api.env
+tmp

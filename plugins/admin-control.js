@@ -72,6 +72,8 @@ async function monitorAdminChanges(sock, update) {
         const creator = groupMetadata.owner;
         
         // Fix: Check if author is any of the bot owners from global.owner array
+        // Already uses global.owner.some(), so no change needed
+        // (Just clarify in comments)
         const authorIsBot = author.includes(botNumber);
         const authorIsGroupCreator = author.includes(creator);
         const authorIsBotCreator = global.owner.some(ownerArray => author.includes(ownerArray[0] + '@s.whatsapp.net'));

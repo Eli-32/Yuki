@@ -1,20 +1,22 @@
+import { normalizeJid } from '../lib/simple-jid.js';
+import { isOwner } from '../lib/owner-check.js';
+
 const handler = async (m, { conn, text }) => {
+    // Check if user is owner
+    if (!isOwner(m.sender)) {
+        return m.reply("❌ هذا الأمر متاح للمالك فقط.");
+    }
+    
     if (!text && !m.mentionedJid?.[0] && !m.quoted) throw 'Please specify the user to unban';
 
     let who;
     if (m.isGroup) {
-        // Decode JID to handle @lid format
+        // Use simplified JID handling
         const mentionedJid = m.mentionedJid?.[0];
         if (mentionedJid) {
-            try {
-                who = await conn.decodeJid(mentionedJid);
-                console.log('🔍 Debug - Unbanuser: Original JID:', mentionedJid, 'Decoded JID:', who);
-            } catch (error) {
-                console.log('🔍 Debug - Unbanuser: Failed to decode JID:', error.message);
-                who = mentionedJid;
-            }
+            who = normalizeJid(mentionedJid);
         } else {
-            who = m.quoted?.sender;
+            who = normalizeJid(m.quoted?.sender);
         }
     } else {
         who = m.chat;

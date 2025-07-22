@@ -1,4 +1,8 @@
 
+import dotenv from 'dotenv';
+
+// Load environment variables from api.env
+dotenv.config({ path: './api.env' });
 import { watchFile, unwatchFile } from 'fs';
 import chalk from 'chalk';
 import { fileURLToPath } from 'url';
@@ -6,7 +10,10 @@ import fs from 'fs';
 import moment from 'moment-timezone';
 
 // Define global variables
-global.owner = [['96176337375','+966535993926', 'Elta', true]];
+global.owner = [
+  ['96176337375', 'Elta'],
+  ['+966535993926', 'Omar'],
+   ];
 global.xaxa = 'kaneki';
 global.suittag = ['96176337375'];
 global.prems = ['96176337375'];
@@ -81,11 +88,8 @@ watchFile(file, () => {
   console.log(chalk.redBright('Updated main.js'));
   import(`${file}?update=${Date.now()}`);
 });
-// config.js
-
-export const packname = '𝑬𝒍𝒕𝒂 - 𝑩𝑶𝑻';
-
-// Other exports or global variables if needed
+// config.js - Single source of truth for all bot configuration
+// All bot configuration should be handled here through global variables
 
 // Message logging configuration
 global.enableMessageLogging = true; // Set to false to disable message logging

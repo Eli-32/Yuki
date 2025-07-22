@@ -5,6 +5,8 @@ let handler = m => m;
 // Store game state per group
 let gameStates = {};
 
+// Make game states globally accessible for anime detector integration
+global.masabikGameStates = gameStates;
 
 let names= [
           'لوفي', 'ناروتو', 'سابو', 'ايس', 'رايلي', 'جيرايا', 'ايتاتشي', 'ساسكي', 'شيسوي', 'يوهان',
@@ -34,7 +36,6 @@ let names= [
           'ايانوكوجي', 'ايتادوري', 'جين', 'يوجي', 'دراغون', 'دازاي', 'ديكو', 'جينوس', 'جيرو', 'جود', 'كود', 'كيد', 'يوميكو'
   ];
 
-
 async function isAdmin(m, conn) {
     if (!m.isGroup) return false;
     try {
@@ -55,8 +56,13 @@ function getGameState(chatId) {
             currentNames: [],
             nameCount: 1,
             responses: {},
-            playerProgress: {} // Track each player's progress for current round
+            playerProgress: {},
         };
+    } else {
+        // Reset session state for new game
+        gameStates[chatId].responses = {};
+        gameStates[chatId].playerProgress = {};
+        gameStates[chatId].currentNames = [];
     }
     return gameStates[chatId];
 }
@@ -78,30 +84,73 @@ function getRandomNames(count) {
     return selectedNames;
 }
 
-function checkUserProgress(userInput, currentNames, playerProgress, playerId) {
-    const normalizedInput = userInput.trim().replace(/\s+/g, ' ').toLowerCase();
-    const normalizedNames = currentNames.map(name => name.trim().toLowerCase());
+// Improved Arabic text normalization
+function normalizeArabicText(text) {
+    return text
+        .trim()
+        .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+        .replace(/[ًٌٍَُِّْ]/g, '') // Remove Arabic diacritics
+        .replace(/[أإآا]/g, 'ا') // Normalize all alef variants including آ
+        .replace(/ة/g, 'ه') // Normalize taa marboota
+        .replace(/ى/g, 'ي') // Normalize alef maksura
+        .replace(/ؤ/g, 'و') // Normalize waw with hamza
+        .replace(/ئ/g, 'ي'); // Normalize yaa with hamza
+}
 
+function checkUserProgress(userInput, currentNames, playerProgress, playerId) {
+    const normalizedInput = normalizeArabicText(userInput).toLowerCase();
+    
     if (!playerProgress[playerId]) {
         playerProgress[playerId] = new Set();
     }
 
     let foundNewMatches = false;
 
-    for (let name of normalizedNames) {
-        if (!playerProgress[playerId].has(name) && normalizedInput.includes(name)) {
-            playerProgress[playerId].add(name);
-            foundNewMatches = true;
+    for (let originalName of currentNames) {
+        const normalizedName = normalizeArabicText(originalName).toLowerCase();
+        
+        console.log(`Checking: "${normalizedInput}" against "${normalizedName}" (original: "${originalName}")`); // Debug log
+        
+        // Check if this name hasn't been found yet and is present in the input
+        if (!playerProgress[playerId].has(originalName)) {
+            // Try multiple matching methods:
+            
+            // Method 1: Exact match after normalization
+            let nameMatches = normalizedInput === normalizedName;
+            
+            // Method 2: Contains match
+            if (!nameMatches) {
+                nameMatches = normalizedInput.includes(normalizedName) || normalizedName.includes(normalizedInput);
+            }
+            
+            // Method 3: Word-based matching for multi-word names
+            if (!nameMatches) {
+                const inputWords = normalizedInput.split(/\s+/);
+                const nameWords = normalizedName.split(/\s+/);
+                
+                // Check if all words of the name are present in the input
+                nameMatches = nameWords.every(nameWord => 
+                    inputWords.some(inputWord => 
+                        inputWord.includes(nameWord) || nameWord.includes(inputWord)
+                    )
+                );
+            }
+            
+            if (nameMatches) {
+                playerProgress[playerId].add(originalName);
+                foundNewMatches = true;
+                console.log(`✓ Player ${playerId} found: ${originalName}`); // Debug log
+            }
         }
     }
 
-    const hasAllNames = normalizedNames.every(name => playerProgress[playerId].has(name));
+    const hasAllNames = currentNames.every(name => playerProgress[playerId].has(name));
 
     return {
         foundNewMatches,
         hasAllNames,
         foundCount: playerProgress[playerId].size,
-        totalCount: normalizedNames.length
+        totalCount: currentNames.length
     };
 }
 
@@ -122,6 +171,8 @@ handler.all = async function(m, { conn }) {
             // Convert Arabic numerals to English if needed
             const arabicToEnglish = startMatch[1].replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
             requestedCount = parseInt(arabicToEnglish) || 1;
+            // Limit to reasonable number
+            requestedCount = Math.min(Math.max(requestedCount, 1), 10);
         }
 
         gameState.active = true;
@@ -130,9 +181,26 @@ handler.all = async function(m, { conn }) {
         gameState.playerProgress = {}; // Reset player progress
         gameState.currentNames = getRandomNames(requestedCount);
         
+        console.log(`Game started with names: ${gameState.currentNames.join(', ')}`); // Debug log
+        
         // Display names with spaces between them
         const nameDisplay = gameState.currentNames.join(' ');
         await m.reply(`*${nameDisplay}*`);
+        
+    } else if (/^\.تست (.+)$/i.test(m.text)) {
+        // Debug command to test matching
+        const testInput = m.text.match(/^\.تست (.+)$/i)[1];
+        const normalized = normalizeArabicText(testInput);
+        let results = [];
+        
+        names.slice(0, 10).forEach(name => {
+            const normalizedName = normalizeArabicText(name);
+            if (normalized === normalizedName || normalized.includes(normalizedName) || normalizedName.includes(normalized)) {
+                results.push(`${name} ← ${normalizedName}`);
+            }
+        });
+        
+        await m.reply(`Input: "${testInput}" → "${normalized}"\n\nMatches:\n${results.join('\n') || 'No matches'}`);
         
     } else if (/^\.سكت$/i.test(m.text)) {
         if (!gameState.active) {
@@ -156,32 +224,49 @@ handler.all = async function(m, { conn }) {
         gameState.currentNames = []; // Clear the current names
         gameState.playerProgress = {}; // Clear player progress
         
-    } else if (gameState.active && gameState.currentNames.length > 0) {
-        // Check user progress for current names
-        const progress = checkUserProgress(
-            m.text, 
-            gameState.currentNames, 
-            gameState.playerProgress, 
-            m.sender
-        );
-        
-        if (progress.foundNewMatches && progress.hasAllNames) {
-            // Player completed all names - give point and move to next round
-            if (!gameState.responses[m.sender]) {
-                gameState.responses[m.sender] = 1;
-            } else {
-                gameState.responses[m.sender] += 1;
-            }
-
-            // Clear all players' progress for new round
-            gameState.playerProgress = {};
+    } else if (gameState.active && gameState.currentNames.length > 0 && m.text && m.text.trim().length > 0) {
+        // Only process non-command messages when game is active
+        if (!m.text.startsWith('.')) {
+            // Check user progress for current names
+            const progress = checkUserProgress(
+                m.text,
+                gameState.currentNames,
+                gameState.playerProgress,
+                m.sender
+            );
             
-            // Generate new names
-            gameState.currentNames = getRandomNames(gameState.nameCount);
-            const nameDisplay = gameState.currentNames.join(' ');
-            await m.reply(`*${nameDisplay}*`);
+            console.log(`Progress for ${m.sender}: ${progress.foundCount}/${progress.totalCount}, hasAll: ${progress.hasAllNames}`); // Debug log
+            
+            if (progress.hasAllNames) {
+                // Player completed all names - give point and move to next round
+                if (!gameState.responses[m.sender]) {
+                    gameState.responses[m.sender] = 1;
+                } else {
+                    gameState.responses[m.sender] += 1;
+                }
+
+                // Send confirmation message
+                await m.reply(`✅ صحيح! نقطة لـ @${m.sender.split('@')[0]}`, null, {
+                    mentions: [m.sender]
+                });
+
+                // Clear all players' progress for new round
+                gameState.playerProgress = {};
+                
+                // Generate new names
+                gameState.currentNames = getRandomNames(gameState.nameCount);
+                console.log(`New round with names: ${gameState.currentNames.join(', ')}`); // Debug log
+                
+                const nameDisplay = gameState.currentNames.join(' ');
+                await m.reply(`*${nameDisplay}*`);
+            } else if (progress.foundNewMatches) {
+                // Optional: Give feedback for partial progress in multi-name games
+                if (gameState.nameCount > 1) {
+                    await m.reply(`✓ وجدت ${progress.foundCount} من ${progress.totalCount}`);
+                }
+            }
         }
-        // Silent tracking - no feedback for partial matches
     }
 };
+
 export default handler;

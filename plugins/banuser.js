@@ -1,21 +1,22 @@
+import { normalizeJid } from '../lib/simple-jid.js';
+import { isOwner } from '../lib/owner-check.js';
+
 const handler = async (m, {conn, participants, usedPrefix, command}) => {
+    // Check if user is owner
+    if (!isOwner(m.sender)) {
+        return m.reply("❌ هذا الأمر متاح للمالك فقط.");
+    }
     const BANtext = `\n*${usedPrefix + command} @${global.suittag}*`;
     if (!m.mentionedJid?.[0] && !m.quoted) return m.reply(BANtext, m.chat, {mentions: conn.parseMention(BANtext)});
 
     let who;
     if (m.isGroup) {
-        // Decode JID to handle @lid format
+        // Use simplified JID handling
         const mentionedJid = m.mentionedJid?.[0];
         if (mentionedJid) {
-            try {
-                who = await conn.decodeJid(mentionedJid);
-                console.log('🔍 Debug - Banuser: Original JID:', mentionedJid, 'Decoded JID:', who);
-            } catch (error) {
-                console.log('🔍 Debug - Banuser: Failed to decode JID:', error.message);
-                who = mentionedJid;
-            }
+            who = normalizeJid(mentionedJid);
         } else {
-            who = m.quoted?.sender;
+            who = normalizeJid(m.quoted?.sender);
         }
     } else {
         who = m.chat;

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { getPhoneNumber, normalizeJid } from '../lib/simple-jid.js';
 
 // Load environment variables from api.env file
 dotenv.config({ path: './api.env' });
@@ -43,15 +44,14 @@ const medoBK9 = mongoose.model('BK9', medoBk9Schema);
 function formatJid(jid) {
     if (!jid) return null;
     if (typeof jid !== 'string') return null;
-    if (jid.includes('@s.whatsapp.net')) return jid;
-    return `${jid}@s.whatsapp.net`;
+    return normalizeJid(jid);
 }
 
 // Helper function to extract user ID from JID
 function extractUserId(jid) {
     if (!jid) return null;
     if (typeof jid !== 'string') return null;
-    return jid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+    return getPhoneNumber(jid);
 }
 
 // Helper function to check admin permissions
@@ -65,9 +65,10 @@ async function checkAdminPermission(medoContext) {
         const groupMetadata = await medoContext.conn.groupMetadata(medoContext.chat);
         const groupAdmins = groupMetadata.participants
             .filter(participant => participant.admin)
-            .map(admin => admin.id);
+            .map(admin => normalizeJid(admin.id));
 
-        if (!groupAdmins.includes(medoContext.sender)) {
+        const normalizedSender = normalizeJid(medoContext.sender);
+        if (!groupAdmins.includes(normalizedSender)) {
             medoContext.reply('هذا الأمر يعمل فقط مع الإداريين');
             return false;
         }
@@ -119,10 +120,10 @@ async function handleRegisterCommand(medoContext) {
         let targetJid;
         
         if (medoContext.quoted) {
-            targetJid = medoContext.quoted.sender;
+            targetJid = normalizeJid(medoContext.quoted.sender);
             medoUserId = extractUserId(targetJid);
         } else {
-            targetJid = medoContext.mentionedJid[0];
+            targetJid = normalizeJid(medoContext.mentionedJid[0]);
             medoUserId = extractUserId(targetJid);
         }
 
@@ -136,7 +137,7 @@ async function handleRegisterCommand(medoContext) {
 
         const medoExistingTitle = await medoBK9.findOne({ bk9: medoTitle, groupId: medoContext.chat });
         if (medoExistingTitle) {
-            const existingUserJid = formatJid(medoExistingTitle.userId);
+            const existingUserJid = `${medoExistingTitle.userId}@s.whatsapp.net`;
             const medoExistingUser = await medoContext.conn.getName(existingUserJid) || medoExistingTitle.userId;
             
             await medoContext.reply(
@@ -205,10 +206,10 @@ async function handleGetTitleCommand(medoContext) {
     let targetJid;
 
     if (medoContext.quoted) {
-        targetJid = medoContext.quoted.sender;
+        targetJid = normalizeJid(medoContext.quoted.sender);
         medoUserId = extractUserId(targetJid);
     } else if (medoContext.mentionedJid && medoContext.mentionedJid.length > 0) {
-        targetJid = medoContext.mentionedJid[0];
+        targetJid = normalizeJid(medoContext.mentionedJid[0]);
         medoUserId = extractUserId(targetJid);
     } else {
         medoContext.reply('منشن احد او رد على رسالته لمعرفة لقبه');
@@ -247,7 +248,7 @@ async function handleCheckTitleCommand(medoContext) {
         const medoCheckResult = await medoBK9.findOne({ bk9: medoCheckTitle, groupId: medoContext.chat });
 
         if (medoCheckResult) {
-            const userJid = formatJid(medoCheckResult.userId);
+            const userJid = `${medoCheckResult.userId}@s.whatsapp.net`;
             const medoCheckUser = await medoContext.conn.getName(userJid) || medoCheckResult.userId;
             
             await medoContext.reply(

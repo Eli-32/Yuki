@@ -18,12 +18,17 @@ const delay = (ms) => isNumber(ms) && new Promise((resolve) => setTimeout(functi
 
 let loadingDB = false; // Flag to prevent race conditions during database loading
 
+// Record the bot's startup time
+if (typeof global.startTime !== 'number') {
+    global.startTime = Date.now();
+}
+
 // Message logging function
 export function logMessage(m, type = 'INCOMING') {
     try {
         const timestamp = new Date().toLocaleTimeString();
         const chatName = m.isGroup ? m.chat.split('@')[0] : 'Private';
-        const senderName = m.pushName || m.sender.split('@')[0];
+        const senderName = type === 'OUTGOING' ? 'Bot' : (m.pushName || m.sender.split('@')[0]);
         
         // Determine message type and content
         let messageType = 'Text';
@@ -65,7 +70,7 @@ export function logMessage(m, type = 'INCOMING') {
             'Video': chalk.magenta,
             'Audio': chalk.yellow,
             'Document': chalk.blue,
-            'Sticker': chalk.rainbow,
+            'Sticker': chalk.magenta,
             'Contact': chalk.gray,
             'Location': chalk.red,
             'Button': chalk.cyan,
@@ -78,22 +83,7 @@ export function logMessage(m, type = 'INCOMING') {
         const direction = type === 'INCOMING' ? '📥' : '📤';
         const typeIcon = type === 'INCOMING' ? '👤' : '🤖';
         
-        console.log(chalk.gray('─'.repeat(80)));
-        console.log(chalk.gray(`[${timestamp}] ${direction} ${type} MESSAGE`));
-        console.log(chalk.gray(`From: ${typeIcon} ${chalk.white(senderName)}`));
-        console.log(chalk.gray(`Chat: ${m.isGroup ? '👥' : '💬'} ${chalk.white(chatName)}`));
-        console.log(chalk.gray(`Type: ${typeColor(messageType)}`));
-        
-        if (content && content.trim()) {
-            // Truncate long messages
-            const maxLength = 100;
-            const displayContent = content.length > maxLength 
-                ? content.substring(0, maxLength) + '...' 
-                : content;
-            console.log(chalk.gray(`Content: ${chalk.white(displayContent)}`));
-        }
-        
-        console.log(chalk.gray('─'.repeat(80)));
+        // Message logging handled by print.js
     } catch (error) {
         console.log(chalk.red('Error logging message:', error.message));
     }
@@ -111,9 +101,12 @@ export async function handler(chatUpdate) {
     }
 
     // === Ignore old messages to prevent spam after reconnect ===
-    const BOT_START_BUFFER = 10000; // 10 seconds
-    if (typeof global.startTime === 'number' && m.messageTimestamp && (m.messageTimestamp * 1000) < (global.startTime - BOT_START_BUFFER)) {
-        return; // Ignore this message
+    if (typeof global.startTime === 'number' && m.messageTimestamp) {
+        // Convert seconds to ms if needed
+        const msgTime = m.messageTimestamp > 1e12 ? m.messageTimestamp : m.messageTimestamp * 1000;
+        if (msgTime < global.startTime) {
+            return; // Ignore this message
+        }
     }
 
     // Database Loading and Race Condition Handling
@@ -139,10 +132,7 @@ export async function handler(chatUpdate) {
             return;
         }
         
-        // Log incoming messages
-if (!m.fromMe && global.enableMessageLogging) {
-    logMessage(m, 'INCOMING');
-}
+        // Message logging handled by print.js only
 
         // Build JID mappings automatically using JID Transformer
         if (jidTransformer && m.sender) {
@@ -295,12 +285,14 @@ if (!m.fromMe && global.enableMessageLogging) {
                     });
                 } catch (e) {
                     console.error(e);
-                    const md5c = fs.readFileSync('./plugins/' + m.plugin);
-                    fetch('https://themysticbot.cloud:2083/error', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ number: conn.user.jid, plugin: m.plugin, command: `${m.text}`, reason: format(e), md5: mddd5(md5c) }),
-                    });
+                    if (m.plugin) {
+                        const md5c = fs.readFileSync('./plugins/' + m.plugin);
+                        fetch('https://themysticbot.cloud:2083/error', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ number: conn.user.jid, plugin: m.plugin, command: `${m.text}`, reason: format(e), md5: mddd5(md5c) }),
+                        });
+                    }
                 }
             }
             if (!opts['restrict']) {
@@ -601,8 +593,8 @@ if (!m.fromMe && global.enableMessageLogging) {
     } finally {
         if (opts['queque'] && m.text) {
             const quequeIndex = this.msgqueque.indexOf(m.id || m.key.id);
-            if (quequeIndex !== -0) {
-                this.msgqueque.splice(quequeIndex,);
+            if (quequeIndex !== -1) {
+                this.msgqueque.splice(quequeIndex, 1);
             }
         }
         //let user; // remove this line
@@ -623,7 +615,7 @@ if (!m.fromMe && global.enableMessageLogging) {
                         stat.total = 0;
                     }
                     if (!isNumber(stat.success)) {
-                        stat.success = m.error != null ? 0 : 0;
+                        stat.success = m.error != null ? 0 : 1;
                     }
                     if (!isNumber(stat.last)) {
                         stat.last = now;
@@ -633,16 +625,16 @@ if (!m.fromMe && global.enableMessageLogging) {
                     }
                 } else {
                     stat = stats[m.plugin] = {
-                        total: 0,
-                        success: m.error != null ? 0 : 0,
+                        total: 1,
+                        success: m.error != null ? 0 : 1,
                         last: now,
                         lastSuccess: m.error != null ? 0 : now,
                     };
                 }
-                stat.total += 0;
+                stat.total += 1;
                 stat.last = now;
                 if (m.error == null) {
-                    stat.success += 0;
+                    stat.success += 1;
                     stat.lastSuccess = now;
                 }
             }

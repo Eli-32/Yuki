@@ -13,13 +13,13 @@ import chalk from 'chalk';
 import syntaxerror from 'syntax-error';
 import {tmpdir} from 'os';
 import {format} from 'util';
-import P from 'pino';
 import pino from 'pino';
 import {Boom} from '@hapi/boom';
 import {makeWASocket, protoType, serialize} from './lib/simple.js';
 import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
 import {mongoDB, mongoDBV2} from './lib/mongoDB.js';
+import cloudDBAdapter from './lib/cloudDBAdapter.js';
 import store from './lib/store.js';
 import qrcode from 'qrcode-terminal';
 
@@ -179,8 +179,11 @@ if (!opts['test']) {
   if (global.db) {
     setInterval(async () => {
       if (global.db.data) await global.db.write();
-      if (opts['autocleartmp'] && (global.support || {}).find) (tmp = [os.tmpdir(), 'tmp', 'jadibts'], tmp.forEach((filename) => cp.spawn('find', [filename, '-amin', '3', '-type', 'f', '-delete'])));
-    }, 30 * 1000);
+      if (opts['autocleartmp'] && (global.support || {}).find) {
+        const tmp = [tmpdir(), 'tmp', 'jadibts'];
+        tmp.forEach((filename) => spawn('find', [filename, '-amin', '3', '-type', 'f', '-delete']));
+      }
+    }, 60 * 1000); // Increased from 30s to 60s to reduce I/O operations
   }
 }
 
@@ -427,31 +430,7 @@ global.reloadHandler = async function(restatConn) {
   conn.ev.on('connection.update', conn.connectionUpdate);
   conn.ev.on('creds.update', conn.credsUpdate);
   
-  // Add outgoing message logging
-  conn.ev.on('messages.upsert', (update) => {
-    if (update.messages && update.messages.length > 0 && global.enableMessageLogging) {
-      const lastMessage = update.messages[update.messages.length - 1];
-      if (lastMessage.key && lastMessage.key.fromMe) {
-        // Import and call the logging function
-        import('./handler.js').then(module => {
-          if (module.logMessage) {
-            module.logMessage(lastMessage, 'OUTGOING');
-          }
-        }).catch(() => {
-          // Fallback logging if import fails
-          const timestamp = new Date().toLocaleTimeString();
-          const content = lastMessage.message?.conversation || 
-                         lastMessage.message?.extendedTextMessage?.text || 
-                         '[Outgoing Message]';
-          console.log(chalk.gray('─'.repeat(80)));
-          console.log(chalk.gray(`[${timestamp}] 📤 OUTGOING MESSAGE`));
-          console.log(chalk.gray(`From: 🤖 Bot`));
-          console.log(chalk.gray(`Content: ${chalk.white(content.substring(0, 100))}`));
-          console.log(chalk.gray('─'.repeat(80)));
-        });
-      }
-    }
-  });
+  // Outgoing message logging is now handled in handler.js
   isInit = false;
   return true;
 };
@@ -555,15 +534,14 @@ setInterval(async () => {
 
 setInterval(async () => {
   if (stopped === 'close' || !conn || !conn.user) return;
-  // Don't constantly update status - this can trigger LinkedIn routing
-  // Only update every hour and with normal WhatsApp status
+  // Update status less frequently to improve performance
   const bio = `Hey there! I am using WhatsApp.`;
   try {
     await conn.updateProfileStatus(bio);
   } catch (error) {
     // Silently handle errors to avoid spam
   }
-}, 3600000); // Update every hour instead of every minute
+}, 7200000); // Update every 2 hours instead of every hour
 
 function clockString(ms) {
   const d = isNaN(ms) ? '--' : Math.floor(ms / 86400000);

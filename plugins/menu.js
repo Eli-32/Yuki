@@ -125,9 +125,7 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
         };
 
         // Get owner information dynamically from global.owner array
-        const ownerInfo = global.owner[0]; // Get first owner
-        const ownerName = ownerInfo[1];
-        const ownerNumber = ownerInfo[0];
+        const ownerList = global.owner.map(([number, name]) => `👤 ${name} (${number})`).join('\n');
 
         const infoText = `
         ${botname} 
@@ -137,7 +135,7 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
 
         乂───『 *U S E R*』───乂
         ⛥ *Rank:* User
-        ⛥ *Owner:* ${ownerName}/+${ownerNumber}
+        ⛥ *Owner:* ${ownerList}
         ╰──────────⳹
 
 ╭───────⳹

@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import WarningModel from '../lib/Warning.js';
-// import { getWhatsAppNumber } from '../lib/simple.js';
+import { getPhoneNumber, normalizeJid } from '../lib/simple-jid.js';
 
 // Removed: connectDB and mongoose.connect logic. Assume connection is handled globally.
 
@@ -43,19 +43,23 @@ const resolveTargetUser = (ctx) => {
   try {
     // Check for quoted message first
     if (ctx.quoted && ctx.quoted.sender) {
+      const normalizedJid = normalizeJid(ctx.quoted.sender);
+      const cleanId = getPhoneNumber(ctx.quoted.sender);
       return {
-        id: ctx.quoted.sender.replace(/@s\.whatsapp\.net|@lid/g, ''),
-        jid: ctx.quoted.sender,
-        mention: `@${ctx.quoted.sender.replace(/@s\.whatsapp\.net|@lid/g, '')}`
+        id: cleanId,
+        jid: normalizedJid,
+        mention: `@${cleanId}`
       };
     }
 
     // Check for mentioned users
     if (ctx.mentionedJid?.length > 0) {
+      const normalizedJid = normalizeJid(ctx.mentionedJid[0]);
+      const cleanId = getPhoneNumber(ctx.mentionedJid[0]);
       return {
-        id: ctx.mentionedJid[0].replace(/@s\.whatsapp\.net|@lid/g, ''),
-        jid: ctx.mentionedJid[0],
-        mention: `@${ctx.mentionedJid[0].replace(/@s\.whatsapp\.net|@lid/g, '')}`
+        id: cleanId,
+        jid: normalizedJid,
+        mention: `@${cleanId}`
       };
     }
 
@@ -167,7 +171,7 @@ async function handleViewWarnings(ctx, targetUserId) {
     warnings.warnings.forEach((warn, index) => {
       message += `${index + 1}. ⚠️ ${warn.cause}\n`;
       message += `   📅 ${new Date(warn.date).toLocaleString('ar-EG')}\n`;
-      message += `   👤 بواسطة: @${ctx.sender.replace(/@s\.whatsapp\.net|@lid/g, '')}\n\n`;
+      message += `   👤 بواسطة: @${getPhoneNumber(ctx.sender)}\n\n`;
     });
     
     message += '╰────────────────╯';
@@ -301,7 +305,7 @@ Command: ${command}`);
         break;
         
       case 'انذاراتي':
-        const myUserId = ctx.sender.replace(/@s\.whatsapp\.net|@lid/g, '');
+        const myUserId = getPhoneNumber(ctx.sender);
         await handleViewWarnings(ctx, myUserId);
         break;
         

@@ -1,9 +1,13 @@
 const handler = async (m, { conn, isOwner }) => {
   try {
     // Check if user is owner
-    if (!isOwner) {
-      return m.reply('❌ *Access Denied*\nOnly bot owners can unban chats.');
+    const ownerEntry = global.owner.find(([number]) => m.sender.includes(number));
+    if (!ownerEntry) {
+      // Mention all owners in the error message
+      const ownerList = global.owner.map(([number, name]) => `👤 ${name} (${number})`).join('\n');
+      return m.reply(`This command is for owners only.\n\n${ownerList}`);
     }
+    const [ownerNumber, ownerName] = ownerEntry;
 
     // Initialize chat data if it doesn't exist
     if (!global.db.data.chats[m.chat]) {
@@ -20,19 +24,10 @@ const handler = async (m, { conn, isOwner }) => {
 
     // Unban the chat
     global.db.data.chats[m.chat].isBanned = false;
-    
     // Database automatically saves when data is modified
 
     // Send confirmation message
-    const unbanMessage = `✅ *Chat Unbanned Successfully!*
-
-📝 *Chat Info:*
-• *Chat ID:* ${m.chat}
-• *Chat Name:* ${m.isGroup ? m.chat.split('@')[0] : 'Private Chat'}
-• *Unbanned By:* @${m.sender.split('@')[0]}
-• *Unbanned At:* ${new Date().toLocaleString()}
-
-🎉 *Note:* This chat can now use bot commands again.`;
+    const unbanMessage = `✅ *Chat Unbanned Successfully!*\n\n📝 *Chat Info:*\n• *Chat ID:* ${m.chat}\n• *Chat Name:* ${m.isGroup ? m.chat.split('@')[0] : 'Private Chat'}\n• *Unbanned By:* ${ownerName} (${ownerNumber})\n• *Unbanned At:* ${new Date().toLocaleString()}\n\n🎉 *Note:* This chat can now use bot commands again.`;
 
     await m.reply(unbanMessage);
 

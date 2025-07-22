@@ -416,13 +416,13 @@ const checkAnswer = async (m) => {
 };
 
 handler.all = async function(m, extra) {
-  console.log('🔍 ta3.js handler.all called with:', m.text);
+  // Debug logs removed to prevent terminal spam
   
   if (/^\.متع$/i.test(m.text)) {
-    console.log('🎮 Starting game...');
+    // Debug logs removed to prevent terminal spam
     return startGame(m);
   } else if (/^\.ستع$/i.test(m.text)) {
-    console.log('🛑 Stopping game...');
+    // Debug logs removed to prevent terminal spam
     return stopGame(m);
   } else if (/^\.ضف\s+(.+)$/i.test(m.text)) {
     const match = m.text.match(/^\.ضف\s+(.+)$/i);
@@ -440,11 +440,11 @@ handler.all = async function(m, extra) {
   } else if (/^\.قائمة-الاسئلة$/i.test(m.text)) {
     return listQuestions(m);
   } else if (gameState.active && gameState.currentQuestion) {
-    console.log('🎯 Checking answer for:', m.text);
-    console.log('🎯 Current question:', gameState.currentQuestion);
+    // Debug logs removed to prevent terminal spam
+    // Debug logs removed to prevent terminal spam
     await checkAnswer(m);
   } else {
-    console.log('❌ No match in handler.all for:', m.text);
+    // Debug logs removed to prevent terminal spam
   }
 };
 

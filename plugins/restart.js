@@ -3,18 +3,18 @@ import { jidDecode } from '@whiskeysockets/baileys';
 
 let handler = async (m, { conn, isROwner, text }) => {
   // --- TEMPORARY DEBUGGING START (DO NOT REMOVE FOR NOW) ---
-  console.log('====================================================');
-  console.log('DEBUG: Restart Command Handler Triggered');
-  console.log('====================================================');
+  // Debug logs removed to prevent terminal spam
+  // Debug logs removed to prevent terminal spam
+  // Debug logs removed to prevent terminal spam
 
-  console.log('DEBUG: Full Message Object (m) - Start');
+  // Debug logs removed to prevent terminal spam
   console.log(JSON.stringify(m, null, 2)); // THIS IS THE CRUCIAL LINE
-  console.log('DEBUG: Full Message Object (m) - End');
+  // Debug logs removed to prevent terminal spam
 
   const actualSenderJid = m.key?.participant || m.key?.remoteJid || m.chat;
 
   console.log('----------------------------------------------------');
-  console.log('DEBUG: Sender Information Analysis');
+  // Debug logs removed to prevent terminal spam
   console.log('----------------------------------------------------');
   console.log('1. Raw m.key:', m.key);
   console.log('2. Raw m.chat:', m.chat);
@@ -42,7 +42,7 @@ let handler = async (m, { conn, isROwner, text }) => {
   } else {
     console.warn('WARNING: actualSenderJid was undefined or null!');
   }
-  console.log('====================================================');
+  // Debug logs removed to prevent terminal spam
   // --- TEMPORARY DEBUGGING END ---
 
   if (typeof process.send !== 'function') {

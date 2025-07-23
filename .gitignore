@@ -64,7 +64,6 @@ Thumbs.db
 
 # Misc
 package-lock.json
-tmp/
 
 # Northflank/CI/CD
 *.tgz

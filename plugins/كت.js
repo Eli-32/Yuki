@@ -98,7 +98,7 @@ if (/^كت$/i.test(m.text)) {
 }
 
 if (response) {
-  await conn.reply(m.chat, response, m);
+  await conn.sendMessage(m.chat, response);
 }
 
 return !0;

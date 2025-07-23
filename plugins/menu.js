@@ -150,7 +150,7 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
         // React to the message
         await conn.sendMessage(m.chat, { react: { text: '🌀', key: m.key } });
 
-        const { result, key, timeout } = await conn.sendMessage(m.chat, { video: { url: "./menu_video.mp4"  }, caption: infoText.trim(), gifPlayback: false, gifAttribution: 0 }, { quoted: fcontact });
+        const { result, key, timeout } = await conn.sendMessage(m.chat, { video: { url: "./menu_video.mp4"  }, caption: infoText.trim(), gifPlayback: false, gifAttribution: 0 });
 
         conn.gurumenu[m.sender] = {
             result,
@@ -176,7 +176,7 @@ handler.before = async (m, { conn }) => {
         const choice = m.text.trim();
 
         const sendMenu = async (menuName) => {
-            await conn.sendMessage(m.chat, { image: { url: './menu.jpg' }, caption: menus[menuName] }, { quoted: fcontact });
+            await conn.sendMessage(m.chat, { image: { url: './menu.jpg' }, caption: menus[menuName] });
         };
 
         const menuOptions = {

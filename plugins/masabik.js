@@ -58,11 +58,6 @@ function getGameState(chatId) {
             responses: {},
             playerProgress: {},
         };
-    } else {
-        // Reset session state for new game
-        gameStates[chatId].responses = {};
-        gameStates[chatId].playerProgress = {};
-        gameStates[chatId].currentNames = [];
     }
     return gameStates[chatId];
 }
@@ -169,16 +164,17 @@ handler.all = async function(m, { conn }) {
         let requestedCount = 1;
         if (startMatch[1]) {
             // Convert Arabic numerals to English if needed
-            const arabicToEnglish = startMatch[1].replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
-            requestedCount = parseInt(arabicToEnglish) || 1;
+            let numStr = startMatch[1].replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+            requestedCount = parseInt(numStr) || 1;
             // Limit to reasonable number
             requestedCount = Math.min(Math.max(requestedCount, 1), 10);
         }
 
+        // Reset state ONLY here
         gameState.active = true;
         gameState.nameCount = requestedCount;
-        gameState.responses = {}; // Reset responses
-        gameState.playerProgress = {}; // Reset player progress
+        gameState.responses = {};
+        gameState.playerProgress = {};
         gameState.currentNames = getRandomNames(requestedCount);
         
         console.log(`Game started with names: ${gameState.currentNames.join(', ')}`); // Debug log
@@ -224,47 +220,32 @@ handler.all = async function(m, { conn }) {
         gameState.currentNames = []; // Clear the current names
         gameState.playerProgress = {}; // Clear player progress
         
-    } else if (gameState.active && gameState.currentNames.length > 0 && m.text && m.text.trim().length > 0) {
+    } else if (gameState.active && gameState.currentNames.length > 0 && m.text && !m.text.startsWith('.')) {
         // Only process non-command messages when game is active
-        if (!m.text.startsWith('.')) {
-            // Check user progress for current names
-            const progress = checkUserProgress(
-                m.text,
-                gameState.currentNames,
-                gameState.playerProgress,
-                m.sender
-            );
-            
-            console.log(`Progress for ${m.sender}: ${progress.foundCount}/${progress.totalCount}, hasAll: ${progress.hasAllNames}`); // Debug log
-            
-            if (progress.hasAllNames) {
-                // Player completed all names - give point and move to next round
-                if (!gameState.responses[m.sender]) {
-                    gameState.responses[m.sender] = 1;
-                } else {
-                    gameState.responses[m.sender] += 1;
-                }
+        // Check user progress for current names using ONLY this message
+        // Prevent single-letter words from being considered
+        if (m.text.trim().length <= 1) return;
+        const progress = checkUserProgress(
+            m.text,
+            gameState.currentNames,
+            gameState.playerProgress,
+            m.sender
+        );
 
-                // Send confirmation message
-                await m.reply(`✅ صحيح! نقطة لـ @${m.sender.split('@')[0]}`, null, {
-                    mentions: [m.sender]
-                });
-
-                // Clear all players' progress for new round
-                gameState.playerProgress = {};
-                
-                // Generate new names
-                gameState.currentNames = getRandomNames(gameState.nameCount);
-                console.log(`New round with names: ${gameState.currentNames.join(', ')}`); // Debug log
-                
-                const nameDisplay = gameState.currentNames.join(' ');
-                await m.reply(`*${nameDisplay}*`);
-            } else if (progress.foundNewMatches) {
-                // Optional: Give feedback for partial progress in multi-name games
-                if (gameState.nameCount > 1) {
-                    await m.reply(`✓ وجدت ${progress.foundCount} من ${progress.totalCount}`);
-                }
+        if (progress.hasAllNames) {
+            // Player completed all names - give point and move to next round
+            if (!gameState.responses[m.sender]) {
+                gameState.responses[m.sender] = 1;
+            } else {
+                gameState.responses[m.sender] += 1;
             }
+
+            // No confirmation message, just show new names
+            gameState.playerProgress = {};
+            gameState.currentNames = getRandomNames(gameState.nameCount);
+            console.log(`New round with names: ${gameState.currentNames.join(', ')}`); // Debug log
+            const nameDisplay = gameState.currentNames.join(' ');
+            await m.reply(`*${nameDisplay}*`);
         }
     }
 };

@@ -25,7 +25,7 @@ const handler = async (m, { conn, text }) => {
     if (!who || !global.db.data.users[who]) throw 'User not found in database';
 
     global.db.data.users[who].banned = false;
-    conn.reply(m.chat, '✅ User has been unbanned.', m);
+    conn.sendMessage(m.chat, '✅ User has been unbanned.');
 };
 
 handler.help = ['unbanuser'];

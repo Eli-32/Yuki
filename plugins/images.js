@@ -4,7 +4,7 @@ let cooldown = new Set();
 
 let handler = async (m, { conn }) => {
   if (cooldown.has(m.sender)) {
-    return await conn.sendMessage(m.chat, { text: '⏳ يرجى الانتظار ثانيتين قبل استخدام هذا الأمر مرة أخرى.' }, { quoted: m });
+    return await conn.sendMessage(m.chat, { text: '⏳ يرجى الانتظار ثانيتين قبل استخدام هذا الأمر مرة أخرى.' });
   }
 
   cooldown.add(m.sender);
@@ -14,7 +14,7 @@ let handler = async (m, { conn }) => {
 
   try {
     // Send loading message
-    const loadingMsg = await conn.sendMessage(m.chat, { text: '🔍 جاري البحث عن صورة...' }, { quoted: m });
+    const loadingMsg = await conn.sendMessage(m.chat, { text: '🔍 جاري البحث عن صورة...' });
 
     // Optimized axios request with timeout and compression
     const response = await axios.get(`https://raw.githubusercontent.com/Seiyra/imagesfjsfasfa/refs/heads/main/okay.js`, {
@@ -67,7 +67,7 @@ let handler = async (m, { conn }) => {
       errorMsg += 'يرجى المحاولة مرة أخرى.';
     }
 
-    await conn.sendMessage(m.chat, { text: errorMsg }, { quoted: m });
+    await conn.sendMessage(m.chat, { text: errorMsg });
   }
 };
 

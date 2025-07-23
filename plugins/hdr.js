@@ -25,7 +25,7 @@ let handler = async (m, { conn, usedPrefix, command }) => {
     ]);
 
     const out = await image.getBufferAsync(Jimp.MIME_JPEG);
-    await conn.sendFile(m.chat, out, 'enhanced.jpg', '✅ تمت معالجة الصورة محلياً (تحسين)!', m);
+    await conn.sendFile(m.chat, out, 'enhanced.jpg', '✅ تمت معالجة الصورة محلياً (تحسين)!');
   } catch (e) {
     await m.reply('❌ حدث خطأ أثناء معالجة الصورة.');
   }

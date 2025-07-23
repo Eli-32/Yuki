@@ -16,7 +16,7 @@ handler.all = async function(m) {
   if (responses) {
     let randomIndex = Math.floor(Math.random() * responses.length);
     let randomResponse = responses[randomIndex];
-    await conn.reply(m.chat, randomResponse, m);
+    await conn.sendMessage(m.chat, randomResponse);
   }
 
   return !0;

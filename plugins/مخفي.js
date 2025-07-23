@@ -35,7 +35,6 @@ let handler = async (message, { conn, text, participants }) => {
     message.chat, 
     proto.Message.fromObject(messageContent), 
     {
-      quoted: message,
       userJid: conn.user.id
     }
   );

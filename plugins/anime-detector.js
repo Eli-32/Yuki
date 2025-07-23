@@ -52,28 +52,68 @@ function saveLearnedMappings() {
   }
 }
 
+let masabikBotDelay = 100; // ms, initial delay
+let masabikBotWins = 0;
+let masabikBotLosses = 0;
+const MASABIK_BOT_DELAY_MIN = 80;
+const MASABIK_BOT_DELAY_MAX = 800;
+const MASABIK_BOT_DELAY_STEP = 80;
+
 let handler = async (m, { conn, text, command, isOwner }) => {
   const chatId = m.chat;
   
+  // --- REPLY-TO-LEARN FEATURE ---
+  // If user replies to a message with an asterisked Arabic name and types .add <english_name>
+  if (m.quoted && m.text && m.text.trim().toLowerCase().startsWith('.add ')) {
+    // Extract the English name
+    const englishName = m.text.trim().slice(5).trim();
+    // Extract all Arabic names from the quoted message (all asterisked words)
+    const quotedText = m.quoted.text || '';
+    const matches = quotedText.match(/\*([^*]+)\*/g) || [];
+    // Find the first unrecognized name
+    let nameToAdd = null;
+    for (const match of matches) {
+      const arabicName = match.replace(/\*/g, '').trim();
+      const normalizedName = normalizeArabicName(arabicName);
+      if (!learnedMappings.has(normalizedName)) {
+        nameToAdd = arabicName;
+        break;
+      }
+    }
+    if (nameToAdd && englishName) {
+      const normalizedName = normalizeArabicName(nameToAdd);
+      learnedMappings.set(normalizedName, { name: englishName });
+      saveLearnedMappings();
+      await conn.sendMessage(chatId, { text: `✅ تمت إضافة: *${nameToAdd}* → ${englishName}` }, { quoted: m });
+      return;
+    } else if (!nameToAdd) {
+      await conn.sendMessage(chatId, { text: '❌ جميع الأسماء في الرسالة معروفة بالفعل.' }, { quoted: m });
+      return;
+    } else {
+      await conn.sendMessage(chatId, { text: '❌ يرجى الرد على رسالة تحتوي على اسم أنمي بين نجمتين وكتابة .add <الاسم بالإنجليزية>' }, { quoted: m });
+      return;
+    }
+  }
+
   // Check if this is an owner command to toggle anime detection
-  if (command === 'انمي_تشغيل' || command === 'انمي_ايقاف') {
+  if (command === 'at' || command === 'aa') {
     // Only owner can control this feature
     if (!isOwner) {
       return await conn.sendMessage(chatId, { 
         text: '❌ هذا الأمر متاح للمالك فقط.' 
-      }, { quoted: m });
+      });
     }
 
-    if (command === 'انمي_تشغيل') {
+    if (command === 'at') {
       animeDetectionActive.set(chatId, true);
       return await conn.sendMessage(chatId, { 
         text: 'ابدا' 
-      }, { quoted: m });
+      });
     } else {
       animeDetectionActive.set(chatId, false);
       return await conn.sendMessage(chatId, { 
         text: '❌ تم إيقاف كاشف أسماء الأنمي.' 
-      }, { quoted: m });
+      });
     }
   }
 
@@ -88,95 +128,134 @@ let handler = async (m, { conn, text, command, isOwner }) => {
 
   // Find all text between asterisks - strict matching for pure anime names only
   const animeNameMatches = m.text?.match(/\*([^*]+)\*/g);
-  
   if (!animeNameMatches || animeNameMatches.length === 0) {
     return; // No anime name patterns found
   }
 
-  const validAnimeNames = [];
-  const validationPromises = [];
-  const allPotentialNames = [];
-
-  // Process asterisk-enclosed names with strict validation
+  // For each asterisked word, extract and validate independently
+  const recognizedNames = [];
   for (const match of animeNameMatches) {
     const matchContent = match.replace(/\*/g, '').trim();
-    
-    // Check if the content contains ONLY anime character names (no extra text)
-    // Split by spaces to handle multiple names in one asterisk pair
-    const individualNames = matchContent.split(/\s+/).filter(name => name.length >= 2 && name.length <= 50);
-    
-    // Validate that ALL words in the match are potential anime names
-    let allWordsAreNames = true;
-    const potentialNames = [];
-    
-    for (const word of individualNames) {
-      // Check if this word could be an anime name (Arabic characters only, reasonable length)
-      if (/^[\u0600-\u06FF\s]+$/.test(word) && word.length >= 2 && word.length <= 15) {
-        potentialNames.push(word);
+    const firstNameArr = [matchContent.split(/\s+/)[0]].filter(name => name.length >= 2 && name.length <= 50);
+    for (const word of firstNameArr) {
+      const normalized = normalizeArabicName(word);
+      let isRecognized = false;
+      // 1. Check learnedMappings (.json file) - exact match only
+      if (learnedMappings.has(normalized)) {
+        recognizedNames.push(word);
+        isRecognized = true;
       } else {
-        // If any word is not a potential anime name, skip this entire match
-        allWordsAreNames = false;
-        break;
+        // 2. Check built-in mapping - exact match only
+        const builtInMapping = getEnglishSearchTerms.arabicToEnglish || {};
+        if (builtInMapping[word] || builtInMapping[normalized]) {
+          recognizedNames.push(word);
+          isRecognized = true;
+        }
+        // 3. (Optional) Live API check can be added here if desired
+      }
+      if (isRecognized) {
+        console.log(`🔍 Recognized anime name: "${word}"`);
       }
     }
-    
-    // Only process if ALL words appear to be anime names
-    if (allWordsAreNames && potentialNames.length > 0) {
-      allPotentialNames.push(...potentialNames);
+  }
+
+  // Only respond if at least one recognized name is found
+  if (recognizedNames.length > 0) {
+    if (masabikActive) {
+      setTimeout(async () => {
+        await conn.sendMessage(chatId, { text: recognizedNames.join(' ') });
+      }, masabikBotDelay);
+    } else {
+      await conn.sendMessage(chatId, { text: recognizedNames.join(' ') });
+    }
+  }
+  // If no valid names are found, do not respond at all
+
+  // --- Adaptive bot speed logic for masabik ---
+  if (masabikActive) {
+    // If bot wins, increase delay a bit (up to max)
+    if (/* logic to detect bot win, e.g. bot's answer matches all masabik names */ false) {
+      masabikBotWins++;
+      masabikBotDelay = Math.min(MASABIK_BOT_DELAY_MAX, masabikBotDelay + MASABIK_BOT_DELAY_STEP);
+    }
+    // If bot loses, decrease delay a bit (down to min)
+    if (/* logic to detect bot loss, e.g. human wins round */ false) {
+      masabikBotLosses++;
+      masabikBotDelay = Math.max(MASABIK_BOT_DELAY_MIN, masabikBotDelay - MASABIK_BOT_DELAY_STEP);
     }
   }
 
-  console.log(`🔍 Found ${allPotentialNames.length} potential anime names: ${allPotentialNames.map(n => `"${n}"`).join(', ')}`);
-  if (masabikActive && additionalNames.length > 0) {
-    console.log(`🎮 Masabik challenge active - detected names: ${additionalNames.map(n => `"${n}"`).join(', ')}`);
-  }
+  // --- TYPO SUGGESTION FEATURE ---
+  // If there are asterisked names, but none are recognized, suggest close matches
+  // This section is no longer needed as recognition is strict
+  // if (unrecognizedNames.length > 0) {
+  //   const knownArabicNames = Array.from(new Set([
+  //     ...Object.keys(getEnglishSearchTerms.arabicToEnglish || {}),
+  //     ...Array.from(learnedMappings.keys())
+  //   ]));
+  //   for (const name of unrecognizedNames) {
+  //     // Only suggest if not found in mappings
+  //     const normalized = normalizeArabicName(name);
+  //     if (!learnedMappings.has(normalized) && !knownArabicNames.includes(name)) {
+  //       // Find up to 3 closest matches
+  //       const scored = knownArabicNames.map(n => ({ n, score: calculateSimilarity(normalized, normalizeArabicName(n)) }));
+  //       scored.sort((a, b) => b.score - a.score);
+  //       const suggestions = scored.filter(s => s.score > 0.4).slice(0, 3);
+  //       if (suggestions.length > 0) {
+  //         const suggestionList = suggestions.map((s, i) => `${i+1}. *${s.n}*`).join('\n');
+  //         await conn.sendMessage(chatId, { text: `❓ لم أتعرف على "${name}". هل تقصد:\n${suggestionList}` }, { quoted: m });
+  //         return;
+  //       }
+  //     }
+  //   }
+  // }
 
   // Process each potential anime name in parallel for speed
-  for (const potentialAnimeName of allPotentialNames) {
+  for (const potentialAnimeName of recognizedNames) {
     console.log(`🔍 Processing anime name: "${potentialAnimeName}"`);
 
     // Add to parallel validation
-    validationPromises.push(
-      validateAnimeCharacter(potentialAnimeName).then(result => {
-        console.log(`✅ Validation result for "${potentialAnimeName}":`, result ? 'VALID' : 'INVALID');
-        return {
-          name: potentialAnimeName,
-          isValid: result
-        };
-      }).catch(error => {
-        console.error('Anime detection error for', potentialAnimeName, ':', error);
-        return { name: potentialAnimeName, isValid: false };
-      })
-    );
+    // validationPromises.push(
+    //   validateAnimeCharacter(potentialAnimeName).then(result => {
+    //     console.log(`✅ Validation result for "${potentialAnimeName}":`, result ? 'VALID' : 'INVALID');
+    //     return {
+    //       name: potentialAnimeName,
+    //       isValid: result
+    //     };
+    //   }).catch(error => {
+    //     console.error('Anime detection error for', potentialAnimeName, ':', error);
+    //     return { name: potentialAnimeName, isValid: false };
+    //   })
+    // );
   }
 
   // Wait for all validations to complete in parallel
-  if (validationPromises.length > 0) {
-    try {
-      console.log(`🔄 Validating ${validationPromises.length} anime names in parallel...`);
-      const results = await Promise.all(validationPromises);
+  // if (validationPromises.length > 0) {
+  //   try {
+  //     console.log(`🔄 Validating ${validationPromises.length} anime names in parallel...`);
+  //     const results = await Promise.all(validationPromises);
       
-      for (const result of results) {
-        if (result.isValid) {
-          validAnimeNames.push(result.name);
-          console.log(`✅ Added valid anime name: "${result.name}"`);
-        }
-      }
+  //     for (const result of results) {
+  //       if (result.isValid) {
+  //         validAnimeNames.push(result.name);
+  //         console.log(`✅ Added valid anime name: "${result.name}"`);
+  //       }
+  //     }
 
-      // If we found valid anime characters, send them without replying
-      if (validAnimeNames.length > 0) {
-        const response = validAnimeNames.join(' '); // Changed from '\n' to ' ' for side-by-side display
-        console.log(`📤 Sending response with ${validAnimeNames.length} names: "${response}"`);
-        await conn.sendMessage(chatId, {
-          text: response
-        }); // No quoted message - just send normally
-      } else {
-        console.log('❌ No valid anime characters found');
-      }
-    } catch (error) {
-      console.error('Parallel anime validation error:', error);
-    }
-  }
+  //     // If we found valid anime characters, send them without replying
+  //     if (validAnimeNames.length > 0) {
+  //       const response = validAnimeNames.join(' '); // Changed from '\n' to ' ' for side-by-side display
+  //       console.log(`📤 Sending response with ${validAnimeNames.length} names: "${response}"`);
+  //       await conn.sendMessage(chatId, {
+  //         text: response
+  //       }); // No quoted message - just send normally
+  //     } else {
+  //       console.log('❌ No valid anime characters found');
+  //     }
+  //   } catch (error) {
+  //     console.error('Parallel anime validation error:', error);
+  //   }
+  // }
 };
 
 /**
@@ -250,8 +329,16 @@ async function validateAnimeCharacter(name) {
           const wordMatch = characterName.split(' ').some(word =>
             word === searchTermLower || calculateSimilarity(word, searchTermLower) > 0.7
           );
-          
-          if (exactMatch || similarity > 0.6 || (containsMatch && similarity > 0.4) || wordMatch) {
+         // Popular character threshold
+         const popularCharacters = ['gojo', 'satoru', 'satoru gojo', 'goku', 'luffy', 'naruto', 'eren', 'levi', 'tanjiro', 'nezuko', 'sasuke', 'itachi'];
+         const isPopular = popularCharacters.some(pc => characterName.includes(pc));
+         const threshold = isPopular ? 0.4 : 0.6;
+         // Split name matching
+         const searchParts = searchTermLower.split(' ');
+         const charParts = characterName.split(' ');
+         const partMatch = searchParts.some(sp => charParts.some(cp => cp === sp || cp.includes(sp) || sp.includes(cp)));
+
+          if (exactMatch || similarity > threshold || (containsMatch && similarity > 0.4) || wordMatch || partMatch) {
             const characterInfo = {
               name: character.name,
               anime: character.anime?.[0]?.title || null,
@@ -690,16 +777,34 @@ function getEnglishSearchTerms(arabicName) {
     'بيكي': ['Becky', 'Becky Blackbell']
   };
 
+  // Add popular character nicknames and split names
+  if (arabicToEnglish['غوجو'] === undefined) arabicToEnglish['غوجو'] = ['Gojo', 'Satoru Gojo', 'Satoru'];
+  if (arabicToEnglish['ساتورو'] === undefined) arabicToEnglish['ساتورو'] = ['Satoru', 'Satoru Gojo', 'Gojo'];
+  // Add more as needed for other popular characters
+
   const searchTerms = [];
   
   // Check direct mapping first
   if (arabicToEnglish[arabicName]) {
     searchTerms.push(...arabicToEnglish[arabicName]);
+    // Add split names for each mapping
+    for (const mapped of arabicToEnglish[arabicName]) {
+      const parts = mapped.split(' ');
+      if (parts.length > 1) {
+        searchTerms.push(...parts);
+      }
+    }
   }
   
   // Check normalized mapping for fuzzy matching
   if (arabicToEnglish[normalizedName] && normalizedName !== arabicName) {
     searchTerms.push(...arabicToEnglish[normalizedName]);
+    for (const mapped of arabicToEnglish[normalizedName]) {
+      const parts = mapped.split(' ');
+      if (parts.length > 1) {
+        searchTerms.push(...parts);
+      }
+    }
   }
   
   // Check for partial matches in the mapping
@@ -813,6 +918,22 @@ function levenshteinDistance(str1, str2) {
   return matrix[str2.length][str1.length];
 }
 
+// Patch getEnglishSearchTerms to expose its mapping for typo suggestions
+getEnglishSearchTerms.arabicToEnglish = undefined;
+const _getEnglishSearchTerms = getEnglishSearchTerms;
+getEnglishSearchTerms = function(...args) {
+  if (!getEnglishSearchTerms.arabicToEnglish) {
+    // Extract mapping from the function body
+    const fnStr = _getEnglishSearchTerms.toString();
+    const match = fnStr.match(/const arabicToEnglish = ([\s\S]*?);/);
+    if (match) {
+      // eslint-disable-next-line no-eval
+      getEnglishSearchTerms.arabicToEnglish = eval('(' + match[1] + ')');
+    }
+  }
+  return _getEnglishSearchTerms.apply(this, args);
+};
+
 // This plugin works as a global listener
 handler.all = async function (m) {
   // Only process text messages
@@ -822,9 +943,9 @@ handler.all = async function (m) {
   return handler(m, { conn: this, text: m.text, isOwner: isOwner(m.sender) });
 };
 
-handler.help = ['انمي_تشغيل', 'انمي_ايقاف'];
+handler.help = ['at', 'aa'];
 handler.tags = ['anime', 'owner'];
-handler.command = /^(انمي_تشغيل|انمي_ايقاف)$/i;
+handler.command = /^(at|aa)$/i;
 handler.owner = true;
 
 export default handler;

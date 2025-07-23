@@ -4,7 +4,7 @@
 import { jidDecode } from '@whiskeysockets/baileys';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-dotenv.config({ path: './api.env' });
+dotenv.config({ path: './.env' });
 
 // MongoDB connection
 if (!mongoose.connection.readyState) {

@@ -2,8 +2,8 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { getPhoneNumber, normalizeJid } from '../lib/simple-jid.js';
 
-// Load environment variables from api.env file
-dotenv.config({ path: './api.env' });
+// Load environment variables from .env file
+dotenv.config({ path: './.env' });
 
 // MongoDB URI from environment variables
 const medoUri = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/defaultdb';

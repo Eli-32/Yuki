@@ -8,6 +8,7 @@ RUN npm install --legacy-peer-deps
 
 COPY . .
 
-EXPOSE 5000
+# Northflank uses the PORT environment variable, which defaults to 3000 in the app
+EXPOSE 3000
 
 CMD ["node", "index.js"]

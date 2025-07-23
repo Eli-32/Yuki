@@ -1,8 +1,8 @@
 
 import dotenv from 'dotenv';
 
-// Load environment variables from api.env
-dotenv.config({ path: './api.env' });
+// Load environment variables from .env
+dotenv.config({ path: './.env' });
 import { watchFile, unwatchFile } from 'fs';
 import chalk from 'chalk';
 import { fileURLToPath } from 'url';

@@ -89,17 +89,22 @@ async function handleTitlesCommand(medoContext) {
         if (medoTitles.length === 0) {
             medoContext.reply('لا يوجد ألقاب مسجلة حاليا ┇');
         } else {
-            const titleCounts = medoTitles.reduce((acc, medoTitle) => {
-                acc[medoTitle.bk9] = (acc[medoTitle.bk9] || 0) + 1;
-                return acc;
-            }, {});
-
             let medoTitleList = '';
-            Object.entries(titleCounts).forEach(([medoTitle, medoCount], medoIndex) => {
-                medoTitleList += `${medoIndex + 1} ┇ اللقب: ${medoTitle} ┇ عدد الأشخاص: ${medoCount}\n`;
-            });
+            let mentions = [];
+            
+            for (let i = 0; i < medoTitles.length; i++) {
+                const medoTitle = medoTitles[i];
+                const userJid = `${medoTitle.userId}@s.whatsapp.net`;
+                const userName = await medoContext.conn.getName(userJid) || medoTitle.userId;
+                
+                medoTitleList += `${i + 1} ┇ @${userName} ┇ ${medoTitle.bk9}\n`;
+                mentions.push(userJid);
+            }
 
-            medoContext.reply(`┇ عدد الألقاب المسجلة: ${Object.keys(titleCounts).length}\n\n ┇الألقاب المسجلة:\n\n${medoTitleList}`);
+            await medoContext.reply(
+                `┇ عدد الألقاب المسجلة: ${medoTitles.length}\n\n ┇الألقاب المسجلة:\n\n${medoTitleList}`,
+                { mentions: mentions }
+            );
         }
     } catch (error) {
         console.error('Error in handleTitlesCommand:', error);
@@ -205,28 +210,37 @@ async function handleGetTitleCommand(medoContext) {
     let medoUserId;
     let targetJid;
 
-    if (medoContext.quoted) {
-        targetJid = normalizeJid(medoContext.quoted.sender);
-        medoUserId = extractUserId(targetJid);
-    } else if (medoContext.mentionedJid && medoContext.mentionedJid.length > 0) {
-        targetJid = normalizeJid(medoContext.mentionedJid[0]);
-        medoUserId = extractUserId(targetJid);
-    } else {
-        medoContext.reply('منشن احد او رد على رسالته لمعرفة لقبه');
-        return;
-    }
-
     try {
+        if (medoContext.quoted && medoContext.quoted.sender) {
+            targetJid = normalizeJid(medoContext.quoted.sender);
+            medoUserId = extractUserId(targetJid);
+        } else if (medoContext.mentionedJid && medoContext.mentionedJid.length > 0) {
+            targetJid = normalizeJid(medoContext.mentionedJid[0]);
+            medoUserId = extractUserId(targetJid);
+        } else {
+            medoContext.reply('منشن احد او رد على رسالته لمعرفة لقبه');
+            return;
+        }
+
+        if (!medoUserId || !targetJid) {
+            medoContext.reply('لم يتم العثور على المستخدم');
+            return;
+        }
+
         const medoQuotedUserTitle = await medoBK9.findOne({ userId: medoUserId, groupId: medoContext.chat });
 
-        if (medoQuotedUserTitle) {
+        if (medoQuotedUserTitle && medoQuotedUserTitle.bk9) {
             const medoQuotedUserName = await medoContext.conn.getName(targetJid) || medoUserId;
             await medoContext.reply(
                 `┇ لقب @${medoQuotedUserName} هو : ${medoQuotedUserTitle.bk9}`,
                 { mentions: [targetJid] }
             );
         } else {
-            medoContext.reply('┇ لم يتم تسجيله بعد');
+            const medoQuotedUserName = await medoContext.conn.getName(targetJid) || medoUserId;
+            await medoContext.reply(
+                `┇ @${medoQuotedUserName} لم يتم تسجيله بعد`,
+                { mentions: [targetJid] }
+            );
         }
     } catch (error) {
         console.error('Error in handleGetTitleCommand:', error);

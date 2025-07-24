@@ -14,7 +14,7 @@ let handler = async (m, { conn }) => {
 
   try {
     // Send loading message
-    const loadingMsg = await conn.sendMessage(m.chat, { text: '🔍 جاري البحث عن صورة...' });
+    // const loadingMsg = await conn.sendMessage(m.chat, { text: '🔍 جاري البحث عن صورة...' });
 
     // Optimized axios request with timeout and compression
     const response = await axios.get(`https://raw.githubusercontent.com/Seiyra/imagesfjsfasfa/refs/heads/main/okay.js`, {
@@ -39,7 +39,7 @@ let handler = async (m, { conn }) => {
     let url = res[Math.floor(Math.random() * res.length)];
 
     // Delete loading message
-    await conn.sendMessage(m.chat, { delete: loadingMsg.key });
+    // await conn.sendMessage(m.chat, { delete: loadingMsg.key });
 
     // Send image with optimized settings
     await conn.sendFile(m.chat, url, 'image.jpg', '', m, false, {
@@ -52,9 +52,9 @@ let handler = async (m, { conn }) => {
     
     // Delete loading message if it exists
     try {
-      if (loadingMsg) {
-        await conn.sendMessage(m.chat, { delete: loadingMsg.key });
-      }
+      // if (loadingMsg) { // loadingMsg is removed
+      //   await conn.sendMessage(m.chat, { delete: loadingMsg.key });
+      // }
     } catch (e) {}
 
     // Send appropriate error message

@@ -46,6 +46,8 @@ class EnhancedYukiPlugin {
             download: /^\.يوكي\s+(تحميل|download)\s+(\d+)$/i,
             code: /^\.يوكي\s+(كود|code)\s+(حالة|status)$/i,
             help: /^\.يوكي\s+(مساعدة|help|commands)$/i,
+            pluginList: /^\.يوكي\s+(إضافات|plugins)$/i,
+            pluginExplain: /^\.يوكي\s+(اشرح|شرح|explain)\s+(\d+)$/i,
             // Image processing patterns
             enhance: /^\.يوكي\s+(تحسين|حسني|enhance|hdr)(\s+الصورة|\s+image)?$/i,
             dehaze: /^\.يوكي\s+(ضبابية|dehaze|clear)(\s+الصورة|\s+image)?$/i,
@@ -246,6 +248,17 @@ class EnhancedYukiPlugin {
             return this.getHelpMessage();
         }
 
+        // Plugin Commands
+        const pluginListMatch = message.match(this.commandPatterns.pluginList);
+        if (pluginListMatch) {
+            return await this.handlePluginList(userId);
+        }
+
+        const pluginExplainMatch = message.match(this.commandPatterns.pluginExplain);
+        if (pluginExplainMatch) {
+            return await this.handlePluginExplanation(parseInt(pluginExplainMatch[2]), userId);
+        }
+ 
         return null; // No command matched
     }
 
@@ -534,36 +547,208 @@ class EnhancedYukiPlugin {
     }
 
     getHelpMessage() {
-        return `🤖 *اوامر يوكي المحسنة:*
-
-⚠️ *مهم: كل الاوامر لازم تبدأ بـ ".يوكي"*
+        return `🤖 *أوامر يوكي:*
 
 🔍 *البحث:*
-- .يوكي ابحث [موضوع] - بحث Google
-- .يوكي صورة [موضوع] - بحث صور
-- .يوكي صوت [موضوع] - بحث صوتيات
-- .يوكي تحميل [رقم] - تحميل الصوت
+- .يوكي ابحث [شي] - بحث Google
+- .يوكي صورة [شي] - بحث صور
+- .يوكي صوت [شي] - بحث صوتيات
 
-🖼️ *معالجة الصور:*
-- .يوكي تحسين - تطبيق HDR وتحسين الصورة
-- .يوكي حسني الصورة - نفس الشي
-- .يوكي ضبابية - ازالة الضباب من الصورة
-- .يوكي لصورة - تحويل ملصق لصورة
+🖼️ *الصور:*
+- .يوكي تحسين - تحسين الصورة
+- .يوكي ضبابية - ازالة الضباب
 
-💻 *مراقبة الكود:*
-- .يوكي كود حالة - اخر تغييرات الكود
+🔌 *الإضافات:*
+- .يوكي إضافات - قائمة الإضافات
+- .يوكي اشرح [رقم] - شرح إضافة
 
 💬 *المحادثة:*
-- .يوكي [اي شي] - حكيني عادي!
-- .باي يوكي - ايقاف مؤقت
+- .يوكي [رسالة] - حكيني عادي!
 
-🎯 *امثلة:*
-.يوكي صوت محمد عبده
-.يوكي تحميل 1
-.يوكي حسني الصورة (مع صورة)
+استمتعي! 😊`;
+   }
 
-استمتع! 😊`;
-    }
+   async handlePluginList(userId) {
+       try {
+           const pluginDir = path.join(__dirname, '../plugins');
+           let files = fs.readdirSync(pluginDir).filter(file => file.endsWith('.js') && file !== 'yuki.js');
+
+           if (files.length === 0) {
+               return 'ما في إضافات لعرضها حالياً 😕';
+           }
+
+           // Check if user is owner
+           const isOwner = this.isUserOwner(userId);
+
+           // Filter out owner-only plugins for regular users
+           if (!isOwner) {
+               files = files.filter(file => {
+                   try {
+                       const filePath = path.join(pluginDir, file);
+                       const content = fs.readFileSync(filePath, 'utf-8');
+                       
+                       // Check if plugin is owner-only by looking for handler.owner = true
+                       const isOwnerOnly = content.includes('handler.owner = true') ||
+                                         content.includes('handler.owner=true') ||
+                                         content.includes('isROwner') ||
+                                         content.includes('owner: true');
+                       
+                       return !isOwnerOnly;
+                   } catch (error) {
+                       console.error(`Error reading plugin ${file}:`, error);
+                       return true; // Include if we can't read it
+                   }
+               });
+           }
+
+           if (files.length === 0) {
+               return 'ما في إضافات متاحة لك حالياً 😕';
+           }
+
+           // Store the list of files for the user to choose from
+           await this.storePluginList(userId, files);
+
+           let response = '📜 *قائمة الإضافات المتاحة:*\n\n';
+           files.forEach((file, index) => {
+               const pluginName = path.basename(file, '.js');
+               response += `${index + 1}. ${pluginName}\n`;
+           });
+
+           response += `\n💡 اكتب ".يوكي اشرح [رقم]" لشرح إضافة معينة.`;
+           return response;
+
+       } catch (error) {
+           console.error('Error handling plugin list:', error);
+           return 'معليش، صار في مشكلة وما قدرت أجيب قائمة الإضافات 😔';
+       }
+   }
+
+   // Helper function to check if user is owner
+   isUserOwner(userId) {
+       try {
+           // Extract phone number from userId (remove @s.whatsapp.net)
+           const userNumber = userId.replace('@s.whatsapp.net', '');
+           
+           // Check if user number is in global.owner array
+           return global.owner && global.owner.some(ownerArray => ownerArray[0] === userNumber);
+       } catch (error) {
+           console.error('Error checking if user is owner:', error);
+           return false;
+       }
+   }
+
+   async handlePluginExplanation(index, userId) {
+       try {
+           const pluginFiles = await this.getStoredPluginList(userId);
+
+           if (!pluginFiles || pluginFiles.length === 0) {
+               return 'لازم تطلب قائمة الإضافات أولاً. اكتب ".يوكي إضافات" 📜';
+           }
+
+           if (index < 1 || index > pluginFiles.length) {
+               return `الرقم غلط. اختر رقم بين 1 و ${pluginFiles.length} 🔢`;
+           }
+
+           const fileName = pluginFiles[index - 1];
+           const pluginName = path.basename(fileName, '.js');
+           const filePath = path.join(__dirname, '../plugins', fileName);
+           const content = fs.readFileSync(filePath, 'utf-8');
+
+           // Extract commands from the plugin
+           const commands = this.extractCommands(content);
+           
+           const prompt = `You are Yuki, a sweet Lebanese girl who explains bot plugins briefly. Based on this code, give a SHORT explanation in Lebanese Arabic.
+
+Plugin: ${pluginName}
+Commands: ${commands.join(', ')}
+
+Code:
+\`\`\`javascript
+${content.substring(0, 1500)}
+\`\`\`
+
+Give a SHORT response (max 3-4 lines):
+*شرح إضافة "${pluginName}":*
+[Brief explanation in 1-2 sentences]
+
+*الأوامر:*
+• [command] - [short description]
+• [command] - [short description]
+
+Keep it simple and sweet, no long explanations!`;
+
+           const result = await this.model.generateContent(prompt);
+           const description = result.response.text().trim();
+
+           return description;
+
+       } catch (error) {
+           console.error('Error handling plugin explanation:', error);
+           return 'معليش، ما قدرت أشرح الإضافة حالياً 😔';
+       }
+   }
+
+   async storePluginList(userId, files) {
+       await this.db.collection('media_cache').updateOne(
+           { userId, type: 'plugin_list' },
+           {
+               $set: {
+                   results: files,
+                   timestamp: new Date(),
+                   expiresAt: new Date(Date.now() + 10 * 60 * 1000) // Expires in 10 minutes
+               }
+           },
+           { upsert: true }
+       );
+   }
+
+   async getStoredPluginList(userId) {
+       const cached = await this.db.collection('media_cache').findOne({
+           userId,
+           type: 'plugin_list',
+           expiresAt: { $gt: new Date() }
+       });
+       return cached ? cached.results : null;
+   }
+
+   // Helper function to extract commands from plugin code
+   extractCommands(content) {
+       const commands = [];
+       
+       // Look for different command patterns
+       const patterns = [
+           // handler.command = ['command1', 'command2']
+           /handler\.command\s*=\s*\[([^\]]+)\]/g,
+           // handler.command = /^(command1|command2)$/i
+           /handler\.command\s*=\s*\/\^?\(?([^$)]+)\)?\$?\/[gi]*/g,
+           // .test() patterns like /^\.متع$/i.test(m.text)
+           /\/\^\\?\.([^$\\\/]+)\$?\/[gi]*\.test\(/g,
+           // Direct command checks like m.text === '.command'
+           /m\.text\s*===?\s*['"]\\.?([^'"]+)['"]/g,
+           // Regex test patterns
+           /\/\^\.([^$\/]+)\$\/i\.test/g
+       ];
+
+       patterns.forEach(pattern => {
+           let match;
+           while ((match = pattern.exec(content)) !== null) {
+               if (match[1]) {
+                   // Split by | or , and clean up
+                   const foundCommands = match[1].split(/[|,]/).map(cmd =>
+                       cmd.trim().replace(/['"]/g, '').replace(/\\/g, '')
+                   );
+                   commands.push(...foundCommands);
+               }
+           }
+       });
+
+       // Remove duplicates and filter out empty/invalid commands
+       const uniqueCommands = [...new Set(commands)]
+           .filter(cmd => cmd && cmd.length > 0 && cmd.length < 20)
+           .map(cmd => cmd.startsWith('.') ? cmd : '.' + cmd);
+
+       return uniqueCommands.slice(0, 10); // Limit to 10 commands max
+   }
 
     async saveSearchHistory(userId, query, type, resultCount) {
         try {

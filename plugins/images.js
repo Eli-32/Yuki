@@ -1,16 +1,9 @@
 import axios from 'axios';
 
-let cooldown = new Set();
+// Removed cooldown logic
 
 let handler = async (m, { conn }) => {
-  if (cooldown.has(m.sender)) {
-    return await conn.sendMessage(m.chat, { text: '⏳ يرجى الانتظار ثانيتين قبل استخدام هذا الأمر مرة أخرى.' });
-  }
-
-  cooldown.add(m.sender);
-  setTimeout(() => {
-    cooldown.delete(m.sender);
-  }, 1000); 
+  // Cooldown removed
 
   try {
     // Send loading message

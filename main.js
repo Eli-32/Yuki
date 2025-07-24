@@ -28,6 +28,13 @@ import cloudDBAdapter from './lib/cloudDBAdapter.js';
 import store from './lib/store.js';
 import qrcode from 'qrcode-terminal';
 
+// FIXED IMPORTS FOR COMMONJS MODULES
+import promotePkg from './plugins/promote.cjs';
+const { promoteCommand, handlePromotionEvent } = promotePkg;
+
+import demotePkg from './plugins/demote.cjs';
+const { demoteCommand, handleDemotionEvent } = demotePkg;
+
 const {proto} = (await import('@whiskeysockets/baileys')).default;
 const {DisconnectReason, useMultiFileAuthState, MessageRetryMap, fetchLatestBaileysVersion, makeCacheableSignalKeyStore} = await import('@whiskeysockets/baileys');
 const {CONNECTING} = ws;
@@ -237,23 +244,28 @@ console.log(chalk.bold.red(`=> Something went wrong during deletion, files not d
 }}
 
 function purgeOldFiles() {
-const directories = ['./MyninoSession/', './jadibts/']
-const oneHourAgo = Date.now() - (60 * 60 * 1000)
-directories.forEach(dir => {
-readdirSync(dir, (err, files) => {
-if (err) throw err
-files.forEach(file => {
-const filePath = path.join(dir, file)
-stat(filePath, (err, stats) => {
-if (err) throw err;
-if (stats.isFile() && stats.mtimeMs < oneHourAgo && file !== 'creds.json') {
-unlinkSync(filePath, err => {
-if (err) throw err
-console.log(chalk.bold.green(`File ${file} successfully deleted`))
-})
-} else {
-console.log(chalk.bold.red(`File ${file} not deleted` + err))
-} }) }) }) })
+  const directories = ['./MyninoSession/', './jadibts/'];
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  directories.forEach(dir => {
+    try {
+      if (!existsSync(dir)) return;
+      const files = readdirSync(dir);
+      files.forEach(file => {
+        const filePath = path.join(dir, file);
+        try {
+          const stats = statSync(filePath);
+          if (stats.isFile() && stats.mtimeMs < oneHourAgo && file !== 'creds.json') {
+            unlinkSync(filePath);
+            console.log(chalk.bold.green(`File ${file} successfully deleted`));
+          }
+        } catch (err) {
+          console.log(chalk.bold.red(`File ${file} not deleted: ${err.message}`));
+        }
+      });
+    } catch (err) {
+      console.log(chalk.bold.red(`Error accessing directory ${dir}: ${err.message}`));
+    }
+  });
 }
 
 // Add session cleanup function
@@ -439,6 +451,28 @@ global.reloadHandler = async function(restatConn) {
   return true;
 };
 
+async function handleGroupParticipantUpdate(sock, update) {
+    console.log('Group participant update:', JSON.stringify(update, null, 2));
+    try {
+        const { id, participants, action, author } = update;
+        // Check if it's a group
+        if (!id.endsWith('@g.us')) return;
+        // Handle promotion events
+        if (action === 'promote') {
+            await handlePromotionEvent(sock, id, participants, author);
+            return;
+        }
+        // Handle demotion events
+        if (action === 'demote') {
+            await handleDemotionEvent(sock, id, participants, author);
+            return;
+        }
+        // ... you can add more group participant event handling here if needed ...
+    } catch (err) {
+        console.error('Error in handleGroupParticipantUpdate:', err);
+    }
+}
+
 const pluginFolder = global.__dirname(join(__dirname, './plugins/index'));
 const pluginFilter = (filename) => /\.js$/.test(filename);
 global.plugins = {};
@@ -552,7 +586,7 @@ function clockString(ms) {
   const h = isNaN(ms) ? '--' : Math.floor(ms / 3600000) % 24;
   const m = isNaN(ms) ? '--' : Math.floor(ms / 60000) % 60;
   const s = isNaN(ms) ? '--' : Math.floor(ms / 1000) % 60;
-  return [d, ' day(s) ', h, ' hour(s) ', m, ' minute(s) ', s, ' second(s) '].map((v) => v.toString().padStart(2, 0)).join('');
+  return [d, ' day(s) ', h, ' hour(s) ', m, ' minute(s) ', s, ' second(s) '].map((v) => v.toString().padStart(2, '0')).join('');
 }
 
 _quickTest().catch(console.error);

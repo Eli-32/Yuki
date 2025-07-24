@@ -8,7 +8,10 @@ import fs from 'fs';
 import chalk from 'chalk';
 import mddd5 from 'md5';
 import { jidDecode } from '@whiskeysockets/baileys';
-import jidTransformer from './lib/jidTransformer.js';
+import demotePkg from './plugins/demote.cjs';
+const handleDemotionEvent = demotePkg.handleDemotionEvent;
+import promotePkg from './plugins/promote.cjs';
+const handlePromotionEvent = promotePkg.handlePromotionEvent;
 
 const isNumber = (x) => typeof x === 'number' && !isNaN(x);
 const delay = (ms) => isNumber(ms) && new Promise((resolve) => setTimeout(function () {
@@ -135,23 +138,13 @@ export async function handler(chatUpdate) {
         // Message logging handled by print.js only
 
         // Build JID mappings automatically using JID Transformer
-        if (jidTransformer && m.sender) {
-          try {
-            // Process the message to extract all JID mappings
-            jidTransformer.processMessage(m, this);
-            
-            // If this is a group, update group participants mapping
-            if (m.isGroup && m.chat) {
-              const groupMetadata = await this.groupMetadata(m.chat).catch(() => null);
-              if (groupMetadata && groupMetadata.participants) {
-                jidTransformer.updateGroupParticipants(m.chat, groupMetadata.participants);
-              }
-            }
-            
-          } catch (error) {
-            // Silent error handling
-          }
-        }
+        // Removed: if (jidTransformer && m.sender) { ... }
+        // Removed: try { ... } catch (error) { ... }
+        // Removed: jidTransformer.processMessage(m, this);
+        // Removed: if (m.isGroup && m.chat) { ... }
+        // Removed: const groupMetadata = await this.groupMetadata(m.chat).catch(() => null);
+        // Removed: if (groupMetadata && groupMetadata.participants) { ... }
+        // Removed: jidTransformer.updateGroupParticipants(m.chat, groupMetadata.participants);
 
         m.exp = 0;
         m.money = false;
@@ -651,22 +644,17 @@ export async function handler(chatUpdate) {
     }
 }
 
-export async function participantsUpdate({ id, participants, action }) {
+export async function participantsUpdate({ id, participants, action, author }) {
     if (opts['self']) return;
     if (this.isInit) return;
     if (global.db.data == null) await loadDatabase();
     
     // Update JID transformer with group participants
-    if (jidTransformer && participants && participants.length > 0) {
-      try {
-        jidTransformer.updateGroupParticipants(id, participants);
-      } catch (error) {
-        // Silent error handling
-      }
-    }
+    // Removed: if (jidTransformer && participants && participants.length > 0) { ... }
+    // Removed: try { ... } catch (error) { ... }
+    // Removed: jidTransformer.updateGroupParticipants(id, participants);
     
     const chat = global.db.data.chats[id] || {};
-    let text = '';
     switch (action) {
         case 'add':
         case 'remove':
@@ -676,14 +664,11 @@ export async function participantsUpdate({ id, participants, action }) {
                     let pp = './src/avatar_contact.png';
                     try {
                         pp = await this.profilePictureUrl(user, 'image');
-                    } catch (e) {
-                    } finally {
+                    } catch (e) {}
+                    finally {
                         const apii = await this.getFile(pp);
-
-                        text = (action === 'add' ? (chat.sWelcome || this.welcome || conn.welcome || 'انرت..., @user!').replace('@subject', await this.getName(id)).replace('@desc', groupMetadata.desc?.toString() || '*𝚂𝙸𝙽 𝙳𝙴𝚂𝙲𝚁𝙸𝙿𝙲𝙸𝙾𝙽*') :
+                        let text = (action === 'add' ? (chat.sWelcome || this.welcome || conn.welcome || 'انرت..., @user!').replace('@subject', await this.getName(id)).replace('@desc', groupMetadata.desc?.toString() || '*𝚂𝙸𝙽 𝙳𝙴𝚂𝙲𝚁𝙸𝙿𝙲𝙸𝙾𝙽*') :
                             (chat.sBye || this.bye || conn.bye || 'وداعا..., @user!')).replace('@user', '@' + user.split('@')[0]);
-
-
                         this.sendFile(id, apii.data, 'pp.jpg', text, null, false, { mentions: [user] });
                     }
                 }
@@ -692,17 +677,12 @@ export async function participantsUpdate({ id, participants, action }) {
         case 'promote':
         case 'daradmin':
         case 'darpoder':
-            text = (chat.sPromote || this.spromote || conn.spromote || '@user ```اصبح مشرفاً الان…```');
+            await handlePromotionEvent(this, id, participants, author);
+            break;
         case 'demote':
         case 'quitarpoder':
         case 'quitaradmin':
-            if (!text) {
-                text = (chat.sDemote || this.sdemote || conn.sdemote || '@user ```لم يعد مشرفاً بعد الأن…!```');
-            }
-            text = text.replace('@user', '@' + participants[0].split('@')[0]);
-            if (chat.detect) {
-                this.sendMessage(id, { text, mentions: this.parseMention(text) });
-            }
+            await handleDemotionEvent(this, id, participants, author);
             break;
     }
 }

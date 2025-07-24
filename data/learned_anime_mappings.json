@@ -1120,5 +1120,787 @@
   },
   "موران": {
     "name": "muzan"
+  },
+  "كيفك": {
+    "name": "Kirk"
+  },
+  "جيفج": {
+    "name": "Kirk"
+  },
+  "كجفك": {
+    "name": "Kirk"
+  },
+  "كيبك": {
+    "name": "Kirk"
+  },
+  "ليفل": {
+    "name": "Kirk"
+  },
+  "يفك": {
+    "name": "Kirk"
+  },
+  "كفك": {
+    "name": "Kirk"
+  },
+  "ساكاموتو": {
+    "name": "Sakamoto"
+  },
+  "صاكاموتو": {
+    "name": "Sakamoto"
+  },
+  "ساكاموطو": {
+    "name": "Sakamoto"
+  },
+  "ساجاموتو": {
+    "name": "Sakamoto"
+  },
+  "ساكاموهو": {
+    "name": "Sakamoto"
+  },
+  "ساكامؤتؤ": {
+    "name": "Sakamoto"
+  },
+  "ساي": {
+    "name": " Sai"
+  },
+  "صاي": {
+    "name": " Sai"
+  },
+  "ساج": {
+    "name": " Sai"
+  },
+  "سأي": {
+    "name": " Sai"
+  },
+  "سإي": {
+    "name": " Sai"
+  },
+  "سساي": {
+    "name": " Sai"
+  },
+  "سااي": {
+    "name": " Sai"
+  },
+  "ساكوراجي": {
+    "name": "Sakura"
+  },
+  "يوكينو": {
+    "name": "Tokino Mayoi"
+  },
+  "يوجينو": {
+    "name": "Tokino Mayoi"
+  },
+  "جوكجنو": {
+    "name": "Tokino Mayoi"
+  },
+  "يؤكينؤ": {
+    "name": "Tokino Mayoi"
+  },
+  "يهكينه": {
+    "name": "Tokino Mayoi"
+  },
+  "يوكيمو": {
+    "name": "Tokino Mayoi"
+  },
+  "يولينو": {
+    "name": "Tokino Mayoi"
+  },
+  "لاك": {
+    "name": "Lakan Kan"
+  },
+  "لاج": {
+    "name": "Lakan Kan"
+  },
+  "لأك": {
+    "name": "Lakan Kan"
+  },
+  "لإك": {
+    "name": "Lakan Kan"
+  },
+  "لال": {
+    "name": "Lakan Kan"
+  },
+  "للاك": {
+    "name": "Lakan Kan"
+  },
+  "لااك": {
+    "name": "Lakan Kan"
+  },
+  "ساساكيبي": {
+    "name": "Sasakibe"
+  },
+  "صاصاكيبي": {
+    "name": "Sasakibe"
+  },
+  "ساساجيبي": {
+    "name": "Sasakibe"
+  },
+  "ساساكجبج": {
+    "name": "Sasakibe"
+  },
+  "سأسأكيبي": {
+    "name": "Sasakibe"
+  },
+  "سإسإكيبي": {
+    "name": "Sasakibe"
+  },
+  "توي": {
+    "name": "Sohei Toge"
+  },
+  "تؤي": {
+    "name": "Sohei Toge"
+  },
+  "تهي": {
+    "name": "Sohei Toge"
+  },
+  "تتوي": {
+    "name": "Sohei Toge"
+  },
+  "تووي": {
+    "name": "Sohei Toge"
+  },
+  "تويي": {
+    "name": "Sohei Toge"
+  },
+  "وتي": {
+    "name": "Sohei Toge"
+  },
+  "تور": {
+    "name": "Thor"
+  },
+  "تؤر": {
+    "name": "Thor"
+  },
+  "تهر": {
+    "name": "Thor"
+  },
+  "تتور": {
+    "name": "Thor"
+  },
+  "توور": {
+    "name": "Thor"
+  },
+  "تورر": {
+    "name": "Thor"
+  },
+  "وتر": {
+    "name": "Thor"
+  },
+  "جاي": {
+    "name": "Sai"
+  },
+  "راي": {
+    "name": "Sai"
+  },
+  "جيو": {
+    "name": "Giyuu Tomioka"
+  },
+  "ججو": {
+    "name": "Giyuu Tomioka"
+  },
+  "جيؤ": {
+    "name": "Giyuu Tomioka"
+  },
+  "جيه": {
+    "name": "Giyuu Tomioka"
+  },
+  "ججيو": {
+    "name": "Giyuu Tomioka"
+  },
+  "جييو": {
+    "name": "Giyuu Tomioka"
+  },
+  "اوك": {
+    "name": "Goku"
+  },
+  "والله": {
+    "name": "Wally"
+  },
+  "واللح": {
+    "name": "Wally"
+  },
+  "ؤالله": {
+    "name": "Wally"
+  },
+  "هالله": {
+    "name": "Wally"
+  },
+  "وألله": {
+    "name": "Wally"
+  },
+  "وإلله": {
+    "name": "Wally"
+  },
+  "واككه": {
+    "name": "Wally"
+  },
+  "الله": {
+    "name": "Wally"
+  },
+  "يوكي": {
+    "name": "Yuji"
+  },
+  "يوجي": {
+    "name": "Yuji"
+  },
+  "جوكج": {
+    "name": "Yuji"
+  },
+  "يؤكي": {
+    "name": "Yuji"
+  },
+  "يهكي": {
+    "name": "Yuji"
+  },
+  "يولي": {
+    "name": "Yuji"
+  },
+  "وكي": {
+    "name": "Yuji"
+  },
+  "لدي": {
+    "name": "Levi"
+  },
+  "انتي": {
+    "name": "Annie"
+  },
+  "انطي": {
+    "name": "Annie"
+  },
+  "انتج": {
+    "name": "Annie"
+  },
+  "انهي": {
+    "name": "Annie"
+  },
+  "أنتي": {
+    "name": "Annie"
+  },
+  "إنتي": {
+    "name": "Annie"
+  },
+  "امتي": {
+    "name": "Annie"
+  },
+  "ناتسو": {
+    "name": "Natsu"
+  },
+  "ناتصو": {
+    "name": "Natsu"
+  },
+  "ناطسو": {
+    "name": "Natsu"
+  },
+  "ناهسو": {
+    "name": "Natsu"
+  },
+  "ناتسؤ": {
+    "name": "Natsu"
+  },
+  "ناتسه": {
+    "name": "Natsu"
+  },
+  "نأتسو": {
+    "name": "Natsu"
+  },
+  "اما": {
+    "name": "Ama no Kura no Moriakari no Hime"
+  },
+  "أمأ": {
+    "name": "Ama no Kura no Moriakari no Hime"
+  },
+  "إمإ": {
+    "name": "Ama no Kura no Moriakari no Hime"
+  },
+  "انا": {
+    "name": "Ama no Kura no Moriakari no Hime"
+  },
+  "ااما": {
+    "name": "Ama no Kura no Moriakari no Hime"
+  },
+  "امما": {
+    "name": "Ama no Kura no Moriakari no Hime"
+  },
+  "اماا": {
+    "name": "Ama no Kura no Moriakari no Hime"
+  },
+  "ماا": {
+    "name": "Ama no Kura no Moriakari no Hime"
+  },
+  "اام": {
+    "name": "Ama no Kura no Moriakari no Hime"
+  },
+  "نير*": {
+    "name": "Nezuko"
+  },
+  "*هانابي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "*حانابي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "*هانابج": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "*هأنأبي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "*هإنإبي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "*هامابي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "*هانافي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "*هانابي*": {
+    "name": "Hanabi"
+  },
+  "*حانابي*": {
+    "name": "Hanabi"
+  },
+  "*هانابج*": {
+    "name": "Hanabi"
+  },
+  "*هأنأبي*": {
+    "name": "Hanabi"
+  },
+  "*هإنإبي*": {
+    "name": "Hanabi"
+  },
+  "*هامابي*": {
+    "name": "Hanabi"
+  },
+  "*هانافي*": {
+    "name": "Hanabi"
+  },
+  "*رايلي*": {
+    "name": "Rayleigh Silvers"
+  },
+  "*راجلج*": {
+    "name": "Rayleigh Silvers"
+  },
+  "*رأيلي*": {
+    "name": "Rayleigh Silvers"
+  },
+  "*رإيلي*": {
+    "name": "Rayleigh Silvers"
+  },
+  "*رايكي*": {
+    "name": "Rayleigh Silvers"
+  },
+  "رايلي*": {
+    "name": "Rayleigh Silvers"
+  },
+  "*ايلي*": {
+    "name": "Rayleigh Silvers"
+  },
+  "ميستوجان": {
+    "name": "Mystogan"
+  },
+  "ميصتوجان": {
+    "name": "Mystogan"
+  },
+  "ميسطوجان": {
+    "name": "Mystogan"
+  },
+  "مجستوجان": {
+    "name": "Mystogan"
+  },
+  "كوددو": {
+    "name": "Kondo"
+  },
+  "جوددو": {
+    "name": "Kondo"
+  },
+  "كؤددؤ": {
+    "name": "Kondo"
+  },
+  "كهدده": {
+    "name": "Kondo"
+  },
+  "لوددو": {
+    "name": "Kondo"
+  },
+  "وددو": {
+    "name": "Kondo"
+  },
+  "كددو": {
+    "name": "Kondo"
+  },
+  "بولا": {
+    "name": "Bela"
+  },
+  "بؤلا": {
+    "name": "Bela"
+  },
+  "بهلا": {
+    "name": "Bela"
+  },
+  "بولأ": {
+    "name": "Bela"
+  },
+  "بولإ": {
+    "name": "Bela"
+  },
+  "فولا": {
+    "name": "Bela"
+  },
+  "بوكا": {
+    "name": "Bela"
+  },
+  "ولا": {
+    "name": "Bela"
+  },
+  "بلا": {
+    "name": "Bela"
+  },
+  "هانابي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "حانابي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "هانابج": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "هأنأبي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "هإنإبي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "هامابي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "هانافي": {
+    "name": "Hanabi Hotaruzaki"
+  },
+  "تيتسويا": {
+    "name": "Tatsuya",
+    "arabicName": "تيتسويا"
+  },
+  "تيتصويا": {
+    "name": "Tatsuya",
+    "arabicName": "تيتسويا"
+  },
+  "طيطسويا": {
+    "name": "Tatsuya",
+    "arabicName": "تيتسويا"
+  },
+  "تجتسوجا": {
+    "name": "Tatsuya",
+    "arabicName": "تيتسويا"
+  },
+  "هيهسويا": {
+    "name": "Tatsuya",
+    "arabicName": "تيتسويا"
+  },
+  "تيتسؤيا": {
+    "name": "Tatsuya",
+    "arabicName": "تيتسويا"
+  },
+  "هينانا": {
+    "name": "Hinata"
+  },
+  "هيناتا*": {
+    "name": "Hinata"
+  },
+  "*رايلي": {
+    "name": "Rayleigh Silvers",
+    "arabicName": "*رايلي"
+  },
+  "*راجلج": {
+    "name": "Rayleigh Silvers",
+    "arabicName": "*رايلي"
+  },
+  "*رأيلي": {
+    "name": "Rayleigh Silvers",
+    "arabicName": "*رايلي"
+  },
+  "*رإيلي": {
+    "name": "Rayleigh Silvers",
+    "arabicName": "*رايلي"
+  },
+  "*رايكي": {
+    "name": "Rayleigh Silvers",
+    "arabicName": "*رايلي"
+  },
+  "رايلي": {
+    "name": "Rayleigh Silvers",
+    "arabicName": "*رايلي"
+  },
+  "*ايلي": {
+    "name": "Rayleigh Silvers",
+    "arabicName": "*رايلي"
+  },
+  "جابي": {
+    "name": "Jinbe",
+    "arabicName": "غابي"
+  },
+  "جابج": {
+    "name": "Jinbe",
+    "arabicName": "غابي"
+  },
+  "جأبي": {
+    "name": "Jinbe",
+    "arabicName": "غابي"
+  },
+  "جإبي": {
+    "name": "Jinbe",
+    "arabicName": "غابي"
+  },
+  "جافي": {
+    "name": "Jinbe",
+    "arabicName": "غابي"
+  },
+  "ابي": {
+    "name": "Jinbe",
+    "arabicName": "غابي"
+  },
+  "*ساسكي": {
+    "name": "Sasuke"
+  },
+  "تيماري*": {
+    "name": "Iori Tomari",
+    "arabicName": "تيماري*"
+  },
+  "طيماري*": {
+    "name": "Iori Tomari",
+    "arabicName": "تيماري*"
+  },
+  "تجمارج*": {
+    "name": "Iori Tomari",
+    "arabicName": "تيماري*"
+  },
+  "هيماري*": {
+    "name": "Iori Tomari",
+    "arabicName": "تيماري*"
+  },
+  "تيمأري*": {
+    "name": "Iori Tomari",
+    "arabicName": "تيماري*"
+  },
+  "تيمإري*": {
+    "name": "Iori Tomari",
+    "arabicName": "تيماري*"
+  },
+  "اكيد": {
+    "name": "Kid",
+    "arabicName": "اكيد"
+  },
+  "اجيد": {
+    "name": "Kid",
+    "arabicName": "اكيد"
+  },
+  "اكجد": {
+    "name": "Kid",
+    "arabicName": "اكيد"
+  },
+  "أكيد": {
+    "name": "Kid",
+    "arabicName": "اكيد"
+  },
+  "إكيد": {
+    "name": "Kid",
+    "arabicName": "اكيد"
+  },
+  "اليد": {
+    "name": "Kid",
+    "arabicName": "اكيد"
+  },
+  "احس": {
+    "name": "Ahsoka Tano",
+    "arabicName": "احس"
+  },
+  "اهس": {
+    "name": "Ahsoka Tano",
+    "arabicName": "احس"
+  },
+  "احص": {
+    "name": "Ahsoka Tano",
+    "arabicName": "احس"
+  },
+  "أحس": {
+    "name": "Ahsoka Tano",
+    "arabicName": "احس"
+  },
+  "إحس": {
+    "name": "Ahsoka Tano",
+    "arabicName": "احس"
+  },
+  "ااحس": {
+    "name": "Ahsoka Tano",
+    "arabicName": "احس"
+  },
+  "اححس": {
+    "name": "Ahsoka Tano",
+    "arabicName": "احس"
+  },
+  "ساي*": {
+    "name": "Sai"
+  },
+  "جارا": {
+    "name": "Gaara",
+    "arabicName": "غارا"
+  },
+  "جأرأ": {
+    "name": "Gaara",
+    "arabicName": "غارا"
+  },
+  "جإرإ": {
+    "name": "Gaara",
+    "arabicName": "غارا"
+  },
+  "ارا": {
+    "name": "Gaara",
+    "arabicName": "غارا"
+  },
+  "جرا": {
+    "name": "Gaara",
+    "arabicName": "غارا"
+  },
+  "جاا": {
+    "name": "Gaara",
+    "arabicName": "غارا"
+  },
+  "ربي": {
+    "name": "Robin",
+    "arabicName": "ربي"
+  },
+  "ربج": {
+    "name": "Robin",
+    "arabicName": "ربي"
+  },
+  "رفي": {
+    "name": "Robin",
+    "arabicName": "ربي"
+  },
+  "رربي": {
+    "name": "Robin",
+    "arabicName": "ربي"
+  },
+  "رببي": {
+    "name": "Robin",
+    "arabicName": "ربي"
+  },
+  "ربيي": {
+    "name": "Robin",
+    "arabicName": "ربي"
+  },
+  "بري": {
+    "name": "Robin",
+    "arabicName": "ربي"
+  },
+  "مره": {
+    "name": "Mr. A",
+    "arabicName": "مرة"
+  },
+  "مرت": {
+    "name": "Mr. A",
+    "arabicName": "مرة"
+  },
+  "مرو": {
+    "name": "Mr. A",
+    "arabicName": "مرة"
+  },
+  "نره": {
+    "name": "Mr. A",
+    "arabicName": "مرة"
+  },
+  "ممره": {
+    "name": "Mr. A",
+    "arabicName": "مرة"
+  },
+  "مرره": {
+    "name": "Mr. A",
+    "arabicName": "مرة"
+  },
+  "مرهه": {
+    "name": "Mr. A",
+    "arabicName": "مرة"
+  },
+  "انرل": {
+    "name": "Anzu",
+    "arabicName": "انزل"
+  },
+  "أنرل": {
+    "name": "Anzu",
+    "arabicName": "انزل"
+  },
+  "إنرل": {
+    "name": "Anzu",
+    "arabicName": "انزل"
+  },
+  "امرل": {
+    "name": "Anzu",
+    "arabicName": "انزل"
+  },
+  "انرك": {
+    "name": "Anzu",
+    "arabicName": "انزل"
+  },
+  "نرل": {
+    "name": "Anzu",
+    "arabicName": "انزل"
+  },
+  "ارل": {
+    "name": "Anzu",
+    "arabicName": "انزل"
+  },
+  "انل": {
+    "name": "Anzu",
+    "arabicName": "انزل"
+  },
+  "سينكو": {
+    "name": "Shino"
+  },
+  "رور": {
+    "name": "Zoro"
+  },
+  "يوري": {
+    "name": "Yuji",
+    "arabicName": "يوري"
+  },
+  "جورج": {
+    "name": "Yuji",
+    "arabicName": "يوري"
+  },
+  "يؤري": {
+    "name": "Yuji",
+    "arabicName": "يوري"
+  },
+  "يهري": {
+    "name": "Yuji",
+    "arabicName": "يوري"
+  },
+  "وري": {
+    "name": "Yuji",
+    "arabicName": "يوري"
+  },
+  "يري": {
+    "name": "Yuji",
+    "arabicName": "يوري"
+  },
+  "يوي": {
+    "name": "Yuji",
+    "arabicName": "يوري"
+  },
+  ".ترجيه": {
+    "name": "Trya",
+    "arabicName": ".ترقية"
+  },
+  ".طرجيه": {
+    "name": "Trya",
+    "arabicName": ".ترقية"
+  },
+  ".تركيه": {
+    "name": "Trya",
+    "arabicName": ".ترقية"
+  },
+  ".ترججه": {
+    "name": "Trya",
+    "arabicName": ".ترقية"
   }
 }

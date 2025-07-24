@@ -11,7 +11,7 @@
     "@google/genai": "^1.10.0",
     "@google/generative-ai": "^0.24.1",
     "@hapi/boom": "^10.0.1",
-    "@whiskeysockets/baileys": "^6.7.18",
+    "@whiskeysockets/baileys": "github:Drayyyxd/XD-Baileys",
     "awesome-phonenumber": "^7.5.0",
     "axios": "^1.10.0",
     "baileys-pro": "^0.0.5",

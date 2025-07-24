@@ -1,5 +1,6 @@
 import express from 'express';
 const app = express();
+const PORT = process.env.PORT || process.env.SERVER_PORT || 3000;
 app.get('/', (req, res) => res.send('Bot is running!'));
 app.listen(PORT, () => console.log(`Web server listening on port ${PORT}`));
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
@@ -31,7 +32,6 @@ const {proto} = (await import('@whiskeysockets/baileys')).default;
 const {DisconnectReason, useMultiFileAuthState, MessageRetryMap, fetchLatestBaileysVersion, makeCacheableSignalKeyStore} = await import('@whiskeysockets/baileys');
 const {CONNECTING} = ws;
 const {chain} = lodash;
-const PORT = process.env.PORT || process.env.SERVER_PORT || 3000;
 
 protoType();
 serialize();

@@ -317,7 +317,21 @@ async function connectionUpdate(update) {
         global.timestamp.connect = new Date();
       }, Math.min(30000, 2000 * reconnectAttempts)); // Exponential backoff, max 30s
     } else {
-      console.log(chalk.red('Max reconnect attempts reached. Please check your internet or session.'));
+      console.log(chalk.red('Max reconnect attempts reached. Possible session corruption. Deleting session files and resetting...'));
+      // Delete all session files to force re-authentication
+      try {
+        const sessionDir = './MyninoSession';
+        if (existsSync(sessionDir)) {
+          readdirSync(sessionDir).forEach(file => {
+            if (file.endsWith('.json')) {
+              unlinkSync(`${sessionDir}/${file}`);
+            }
+          });
+        }
+      } catch (error) {
+        console.log(chalk.yellow('⚠️ Could not clear session files:', error.message));
+      }
+      process.send('reset');
     }
     return;
   }

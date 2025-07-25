@@ -8,6 +8,7 @@ import cfonts from "cfonts";
 import chalk from "chalk";
 import { createInterface } from "readline";
 import yargs from "yargs";
+import express from 'express';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(__dirname);
 const { name, author } = require(join(__dirname, "./package.json"));
@@ -66,4 +67,19 @@ p.emit('message', line.trim())
 })
 //console.log(p)
 }
-start('main.js')
+
+function startBot() {
+  start('main.js');
+}
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Bot is alive!');
+});
+
+app.listen(port, () => {
+  console.log(`HTTP server running on port ${port}`);
+  startBot();
+});

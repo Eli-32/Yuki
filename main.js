@@ -17,7 +17,7 @@ import path, {join} from 'path';
 import {fileURLToPath, pathToFileURL} from 'url';
 import {platform} from 'process';
 import * as ws from 'ws';
-import {readdirSync, statSync, unlinkSync, existsSync, readFileSync, rmSync, watch, stat} from 'fs';
+import {readdirSync, statSync, unlinkSync, existsSync, readFileSync, rmSync, watch, stat, mkdirSync} from 'fs';
 import yargs from 'yargs';
 import {spawn} from 'child_process';
 import lodash from 'lodash';
@@ -480,11 +480,31 @@ if (opts['server']) (await import('./server.js')).default(global.conn, PORT);
 function clearTmp() {
   const tmp = [tmpdir(), join(__dirname, './tmp')];
   const filename = [];
-  tmp.forEach((dirname) => readdirSync(dirname).forEach((file) => filename.push(join(dirname, file))));
+  
+  tmp.forEach((dirname) => {
+    try {
+      // Ensure directory exists before trying to read it
+      if (!existsSync(dirname)) {
+        mkdirSync(dirname, { recursive: true });
+        return;
+      }
+      
+      readdirSync(dirname).forEach((file) => filename.push(join(dirname, file)));
+    } catch (error) {
+      // Silently handle directory errors
+      console.log(chalk.yellow(`⚠️ Could not access directory: ${dirname}`));
+    }
+  });
+  
   return filename.map((file) => {
-    const stats = statSync(file);
-    if (stats.isFile() && (Date.now() - stats.mtimeMs >= 1000 * 60 * 3)) return unlinkSync(file); // 3 minutes
-    return false;
+    try {
+      const stats = statSync(file);
+      if (stats.isFile() && (Date.now() - stats.mtimeMs >= 1000 * 60 * 3)) return unlinkSync(file); // 3 minutes
+      return false;
+    } catch (error) {
+      // Silently handle file errors
+      return false;
+    }
   });
 }
 
@@ -659,10 +679,17 @@ async function connectionUpdate(update) {
       const isLid = global.isLidContact(jid);
       });
     
-    // Set status after successful connection
+    // Set status after successful connection (with timeout protection)
     setTimeout(async () => {
       try {
-        await conn.updateProfileStatus('Hey there! I am using WhatsApp.');
+        // Add timeout to prevent hanging
+        const statusPromise = conn.updateProfileStatus('Hey there! I am using WhatsApp.');
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Status update timeout')), 10000)
+        );
+        
+        await Promise.race([statusPromise, timeoutPromise]);
+        
         if (!process.env.ELTA_CHILD_PROCESS) {
           console.log(chalk.green('✅ Status updated successfully'));
         }
@@ -803,7 +830,9 @@ global.reloadHandler = async function(restatConn) {
     } catch (error) {
       // Handle encryption errors specifically
       if (error.message && (error.message.includes('No SenderKeyRecord found for decryption') || 
-                           error.message.includes('Invalid PreKey ID'))) {
+                           error.message.includes('Invalid PreKey ID') ||
+                           error.message.includes('Bad MAC') ||
+                           error.message.includes('No matching sessions found'))) {
         console.log(chalk.yellow('🔐 Encryption error in message handler, attempting recovery...'));
         
         // Extract JID from the error context
@@ -998,9 +1027,18 @@ global.statusInterval = setInterval(async () => {
   // Update status less frequently to improve performance
   const bio = `Hey there! I am using WhatsApp.`;
   try {
-    await conn.updateProfileStatus(bio);
+    // Add timeout to prevent hanging
+    const statusPromise = conn.updateProfileStatus(bio);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Status update timeout')), 10000)
+    );
+    
+    await Promise.race([statusPromise, timeoutPromise]);
   } catch (error) {
     // Silently handle errors to avoid spam
+    if (!process.env.ELTA_CHILD_PROCESS) {
+      console.log(chalk.yellow('⚠️ Status update failed:', error.message));
+    }
   }
 }, 7200000); // Update every 2 hours instead of every hour
 

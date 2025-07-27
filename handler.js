@@ -117,7 +117,9 @@ export async function handler(chatUpdate) {
     } catch (error) {
         // Handle encryption errors silently
         if (error.message && (error.message.includes('No SenderKeyRecord found for decryption') || 
-                             error.message.includes('Invalid PreKey ID'))) {
+                             error.message.includes('Invalid PreKey ID') ||
+                             error.message.includes('Bad MAC') ||
+                             error.message.includes('No matching sessions found'))) {
             console.log(chalk.yellow('🔐 Encryption error detected, attempting recovery...'));
             // The encryption manager will handle this in the main connection
             return;

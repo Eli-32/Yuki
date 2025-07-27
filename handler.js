@@ -12,6 +12,7 @@ import demotePkg from './plugins/demote.cjs';
 const handleDemotionEvent = demotePkg.handleDemotionEvent;
 import promotePkg from './plugins/promote.cjs';
 const handlePromotionEvent = promotePkg.handlePromotionEvent;
+import privateBlocker, { handlePrivateMessage } from './lib/private-blocker.js';
 
 
 
@@ -99,6 +100,30 @@ export async function handler(chatUpdate) {
     if (!chatUpdate) {
         return;
     }
+    
+    // Handle encryption errors
+    try {
+        if (chatUpdate.messages && chatUpdate.messages.length > 0) {
+            for (const message of chatUpdate.messages) {
+                if (message.key && message.key.remoteJid) {
+                    // Check for encryption errors in message processing
+                    if (message.message && message.message.protocolMessage) {
+                        // Handle protocol message errors
+                        continue;
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        // Handle encryption errors silently
+        if (error.message && (error.message.includes('No SenderKeyRecord found for decryption') || 
+                             error.message.includes('Invalid PreKey ID'))) {
+            console.log(chalk.yellow('🔐 Encryption error detected, attempting recovery...'));
+            // The encryption manager will handle this in the main connection
+            return;
+        }
+    }
+    
     this.pushMessage(chatUpdate.messages).catch(console.error);
     let m = chatUpdate.messages[chatUpdate.messages.length - 1];
     if (!m) {
@@ -229,6 +254,26 @@ export async function handler(chatUpdate) {
         const isOwner = isROwner || m.fromMe;
         const isMods = isOwner || global.mods.map((v) => v.replace(/[^0-9]/g, '') + '@s.whatsapp.net').includes(m.sender);
         const isPrems = isROwner || isOwner || isMods || global.db.data.users[m.sender]?.premiumTime > 0;  // Use optional chaining
+
+        // Advanced private message blocking system
+        if (!m.isGroup) {
+            const blockResult = await handlePrivateMessage(m, isOwner);
+            
+            if (!blockResult.allowed) {
+                console.log(chalk.red(`🚫 BLOCKED: ${m.sender} - ${blockResult.reason}`));
+                
+                try {
+                    await this.sendMessage(m.chat, {
+                        text: blockResult.message,
+                        quoted: m
+                    });
+                } catch (error) {
+                    console.error(chalk.red('Error sending block message:', error.message));
+                }
+                
+                return; // Block the message processing
+            }
+        }
 
         if (opts['nyimak']) {
             return;

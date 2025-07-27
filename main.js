@@ -34,6 +34,8 @@ import {mongoDB, mongoDBV2} from './lib/mongoDB.js';
 import cloudDBAdapter from './lib/cloudDBAdapter.js';
 import store from './lib/store.js';
 import qrcode from 'qrcode-terminal';
+import encryptionManager, { handleEncryptionError } from './lib/encryption-manager.js';
+import renderSessionManager, { initializeRenderSession } from './render-config.js';
 
 // FIXED IMPORTS FOR COMMONJS MODULES
 import promotePkg from './plugins/promote.cjs';
@@ -150,6 +152,10 @@ loadChatgptDB();
 
 global.authFile = `MyninoSession`;
 // Don't clean up session files on startup - they contain encryption keys
+
+// Initialize Render session management before creating auth state
+await initializeRenderSession();
+
 const {state, saveState, saveCreds} = await useMultiFileAuthState(global.authFile);
 
 const msgRetryCounterMap = (MessageRetryMap) => { };
@@ -207,23 +213,40 @@ conn.isInit = false;
 conn.well = false;
 conn.logger.info(`Loading...\n`);
 
-// Enhanced session management function
+// Enhanced session management function with proper encryption key handling
 const handleSessionCreation = async (jid) => {
   try {
     if (jid.includes('@lid')) {
       return;
     }
     
-    // Step 1: Subscribe to presence
+    // Step 1: Subscribe to presence (establishes basic session)
     await conn.presenceSubscribe(jid).catch(() => {});
     
-    // Step 2: Only do presence subscription, no PreKey bundle requests
+    // Step 2: Request PreKey bundle to establish encryption
+    try {
+      await conn.requestPreKeyBundle(jid).catch(() => {});
+    } catch (error) {
+      // Silently handle PreKey bundle errors
+    }
     
     // Step 3: Add to session cache
     global.sessionCache.add(jid);
     
-    } catch (error) {
-    }
+    // Step 4: Force session refresh for problematic users
+    setTimeout(async () => {
+      try {
+        if (!jid.includes('@lid')) {
+          await conn.presenceSubscribe(jid).catch(() => {});
+        }
+      } catch (error) {
+        // Silent error handling
+      }
+    }, 5000);
+    
+  } catch (error) {
+    // Silent error handling for session creation
+  }
 };
 
 // Session cache to track managed sessions
@@ -271,7 +294,7 @@ global.isLidContact = (jid) => {
   return jid && typeof jid === 'string' && jid.includes('@lid');
 };
 
-// Global function for immediate session creation (SILENT - NO MESSAGES)
+// Global function for immediate session creation with encryption key handling
 global.createImmediateSession = async (jid) => {
   try {
     if (jid.includes('@lid')) {
@@ -281,19 +304,33 @@ global.createImmediateSession = async (jid) => {
     // Step 1: Subscribe to presence immediately (silent)
     await conn.presenceSubscribe(jid).catch(() => {});
     
-    // Step 2: Only do presence subscription, no PreKey bundle requests
+    // Step 2: Request PreKey bundle for encryption establishment
+    try {
+      await conn.requestPreKeyBundle(jid).catch(() => {});
+    } catch (error) {
+      // Handle PreKey bundle errors silently
+    }
     
     // Step 3: Add to session cache
     global.sessionCache.add(jid);
     
-    // Step 4: Silent session establishment (NO MESSAGES SENT)
-    // We rely only on presence subscription and PreKey bundles
-    // This ensures no unwanted messages are sent to users
-    } catch (error) {
-    }
+    // Step 4: Additional session establishment for reliability
+    setTimeout(async () => {
+      try {
+        if (!jid.includes('@lid')) {
+          await conn.presenceSubscribe(jid).catch(() => {});
+        }
+      } catch (error) {
+        // Silent error handling
+      }
+    }, 3000);
+    
+  } catch (error) {
+    // Silent error handling for session creation
+  }
 };
 
-// Global function to force session refresh for problematic users (SILENT - NO MESSAGES)
+// Global function to force session refresh for problematic users with encryption key refresh
 global.forceSessionRefresh = async (jid) => {
   try {
     if (jid.includes('@lid')) {
@@ -303,36 +340,53 @@ global.forceSessionRefresh = async (jid) => {
     // Remove from cache to force recreation
     global.sessionCache.delete(jid);
     
-    // Recreate session immediately (silent - no messages sent)
+    // Recreate session with encryption key refresh
     await global.createImmediateSession(jid);
     
-    } catch (error) {
-    }
+    // Additional encryption key refresh
+    setTimeout(async () => {
+      try {
+        if (!jid.includes('@lid')) {
+          await conn.presenceSubscribe(jid).catch(() => {});
+          // Request fresh PreKey bundle
+          await conn.requestPreKeyBundle(jid).catch(() => {});
+        }
+      } catch (error) {
+        // Silent error handling
+      }
+    }, 2000);
+    
+  } catch (error) {
+    // Silent error handling
+  }
 };
 
-// Proactive session management
+// Enhanced proactive session management with encryption key handling
 const initializeSessionManagement = async () => {
   try {
     // Get all chats to establish sessions - use the correct method
     const chats = await conn.getChats ? await conn.getChats() : [];
     // If getChats is not available, we'll rely on dynamic session creation
     if (!conn.getChats) {
-      // Set up periodic session refresh for existing sessions
+      // Set up periodic session refresh for existing sessions with encryption key refresh
       setInterval(async () => {
         try {
           for (const jid of global.sessionCache) {
             // Skip @lid contacts in refresh
             if (!jid.includes('@lid')) {
               await conn.presenceSubscribe(jid).catch(() => {});
+              // Refresh PreKey bundles periodically
+              await conn.requestPreKeyBundle(jid).catch(() => {});
             }
           }
-          } catch (error) {
-          }
+        } catch (error) {
+          // Silent error handling
+        }
       }, 300000); // Refresh every 5 minutes (less aggressive)
       return;
     }
     
-    // Enhanced session creation for all chat participants
+    // Enhanced session creation for all chat participants with encryption key handling
     for (const chat of chats) {
       try {
         if (chat.id.endsWith('@g.us')) {
@@ -342,33 +396,46 @@ const initializeSessionManagement = async () => {
             for (const participant of participants.participants) {
               // Skip @lid contacts as they don't need traditional session management
               if (!participant.id.includes('@lid')) {
-                // Enhanced session creation for group participants
+                // Enhanced session creation for group participants with encryption
                 await conn.presenceSubscribe(participant.id).catch(() => {});
                 
-                            // Only do presence subscription, no PreKey bundle requests
+                // Request PreKey bundle for encryption establishment
+                try {
+                  await conn.requestPreKeyBundle(participant.id).catch(() => {});
+                } catch (error) {
+                  // Handle PreKey bundle errors silently
+                }
                 
                 global.sessionCache.add(participant.id);
-                } else {
-                }
+              } else {
+                // Handle @lid contacts differently
+              }
             }
           }
         } else {
           // Individual chat - skip @lid contacts
           if (!chat.id.includes('@lid')) {
-            // Enhanced session creation for individual chats
+            // Enhanced session creation for individual chats with encryption
             await conn.presenceSubscribe(chat.id).catch(() => {});
             
-            // Only do presence subscription, no PreKey bundle requests
+            // Request PreKey bundle for encryption establishment
+            try {
+              await conn.requestPreKeyBundle(chat.id).catch(() => {});
+            } catch (error) {
+              // Handle PreKey bundle errors silently
+            }
             
             global.sessionCache.add(chat.id);
-            } else {
-            }
+          } else {
+            // Handle @lid contacts differently
+          }
         }
       } catch (error) {
-        }
+        // Silent error handling
+      }
     }
     
-    // Set up periodic session refresh with enhanced methods
+    // Set up periodic session refresh with enhanced encryption key management
     setInterval(async () => {
       try {
         for (const jid of global.sessionCache) {
@@ -376,15 +443,22 @@ const initializeSessionManagement = async () => {
           if (!jid.includes('@lid')) {
             await conn.presenceSubscribe(jid).catch(() => {});
             
-            // Only do presence subscription, no PreKey bundle requests
+            // Refresh PreKey bundles for encryption key maintenance
+            try {
+              await conn.requestPreKeyBundle(jid).catch(() => {});
+            } catch (error) {
+              // Handle PreKey bundle errors silently
+            }
           }
         }
-        } catch (error) {
-        }
+      } catch (error) {
+        // Silent error handling
+      }
     }, 120000); // Refresh every 2 minutes (more aggressive)
     
   } catch (error) {
-    }
+    // Silent error handling
+  }
 };
 
 if (!opts['test']) {
@@ -559,6 +633,13 @@ async function connectionUpdate(update) {
       console.log(chalk.cyan(`📱 Phone: ${conn.user?.id || 'Unknown'}`));
     }
     
+    // Initialize encryption key manager
+    encryptionManager.initialize().then(() => {
+      encryptionManager.logKeyStats();
+    }).catch(error => {
+      console.error(chalk.red('❌ Failed to initialize encryption manager:', error.message));
+    });
+    
     // Initialize proactive session management after connection
     setTimeout(() => {
       initializeSessionManagement();
@@ -715,8 +796,36 @@ global.reloadHandler = async function(restatConn) {
     conn.ev.off('creds.update', conn.credsUpdate);
   }
 
-  // Register event handlers with debugging
-  conn.handler = handler.handler.bind(global.conn);
+  // Register event handlers with debugging and encryption error handling
+  conn.handler = async (chatUpdate) => {
+    try {
+      await handler.handler.call(global.conn, chatUpdate);
+    } catch (error) {
+      // Handle encryption errors specifically
+      if (error.message && (error.message.includes('No SenderKeyRecord found for decryption') || 
+                           error.message.includes('Invalid PreKey ID'))) {
+        console.log(chalk.yellow('🔐 Encryption error in message handler, attempting recovery...'));
+        
+        // Extract JID from the error context
+        let jid = null;
+        if (chatUpdate.messages && chatUpdate.messages.length > 0) {
+          const message = chatUpdate.messages[0];
+          if (message.key && message.key.remoteJid) {
+            jid = message.key.remoteJid;
+          }
+        }
+        
+        if (jid) {
+          await handleEncryptionError(error, jid);
+        }
+        return;
+      }
+      
+      // Log other errors
+      console.error(chalk.red('❌ Error in message handler:', error.message));
+    }
+  };
+  
   conn.participantsUpdate = handler.participantsUpdate.bind(global.conn);
   conn.groupsUpdate = handler.groupsUpdate.bind(global.conn);
   conn.onDelete = handler.deleteUpdate.bind(global.conn);

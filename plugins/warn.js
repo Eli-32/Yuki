@@ -108,7 +108,8 @@ async function handleAddWarning(ctx, reason) {
     const lastWarning = userWarnings.warnings[warningCount - 1];
     
     await ctx.conn.sendMessage(ctx.chat, {
-      text: `🔔 *إنذار لـ ${targetUser.mention}*\n\n📊 العدد: ${warningCount}/5\n📝 السبب: ${lastWarning.cause}\n🕒 التاريخ: ${new Date(lastWarning.date).toLocaleString('ar-EG')}\n🚨 تحذير: عند الوصول لـ 5 إنذارات سيتم الطرد`,
+      conversation: `🔔 *إنذار لـ ${targetUser.mention}*\n\n📊 العدد: ${warningCount}/5\n📝 السبب: ${lastWarning.cause}\n🕒 التاريخ: ${new Date(lastWarning.date).toLocaleString('ar-EG')}\n🚨 تحذير: عند الوصول لـ 5 إنذارات سيتم الطرد`
+    }, {
       mentions: [targetUser.jid]
     });
 
@@ -125,7 +126,8 @@ async function handleAddWarning(ctx, reason) {
           );
           
           await ctx.conn.sendMessage(ctx.chat, {
-            text: `تم طرد ${targetUser.mention} لتجاوز الحد الأقصى للإنذارات (5/5)`,
+            conversation: `تم طرد ${targetUser.mention} لتجاوز الحد الأقصى للإنذارات (5/5)`
+          }, {
             mentions: [targetUser.jid]
           });
           
@@ -136,7 +138,7 @@ async function handleAddWarning(ctx, reason) {
           });
         } else {
           await ctx.conn.sendMessage(ctx.chat, {
-            text: '⚠️ البوت يحتاج صلاحيات إدارية للطرد التلقائي'
+            conversation: '⚠️ البوت يحتاج صلاحيات إدارية للطرد التلقائي'
           });
         }
       } catch (removeError) {
@@ -160,7 +162,8 @@ async function handleViewWarnings(ctx, targetUserId) {
 
     if (!warnings?.warnings?.length) {
       return ctx.conn.sendMessage(ctx.chat, {
-        text: '✔️ لا يوجد إنذارات مسجلة لهذا المستخدم',
+        conversation: '✔️ لا يوجد إنذارات مسجلة لهذا المستخدم'
+      }, {
         mentions: [ctx.sender]
       });
     }
@@ -181,7 +184,8 @@ async function handleViewWarnings(ctx, targetUserId) {
     const uniqueIssuers = [...new Set(issuers)];
 
     await ctx.conn.sendMessage(ctx.chat, {
-      text: message,
+      conversation: message
+    }, {
       mentions: uniqueIssuers
     });
   } catch (error) {

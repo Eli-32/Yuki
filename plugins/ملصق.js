@@ -30,7 +30,7 @@ let handler = async (m, { conn, args, usedPrefix, command }) => {
     stiker = '*Failed to create sticker*';
   } finally {
     if (stiker instanceof Buffer) {
-      await conn.sendMessage(m.chat, { sticker: stiker });
+      await conn.sendMessage(m.chat, { stickerMessage: stiker });
     } else {
       m.reply(stiker);
     }

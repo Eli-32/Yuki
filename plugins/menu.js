@@ -355,10 +355,12 @@ ${menuOptions}
         await conn.sendMessage(m.chat, { react: { text: '🌀', key: m.key } });
 
         const { result, key, timeout } = await conn.sendMessage(m.chat, { 
-            video: { url: "./menu_video.mp4" }, 
-            caption: infoText.trim(), 
-            gifPlayback: false, 
-            gifAttribution: 0 
+            videoMessage: { 
+                url: "./menu_video.mp4",
+                caption: infoText.trim(),
+                gifPlayback: false,
+                gifAttribution: 0
+            }
         });
 
         // Store the scanned plugins for this user session
@@ -392,8 +394,10 @@ handler.before = async (m, { conn }) => {
         const sendMenu = async (menuName) => {
             if (menus[menuName]) {
                 await conn.sendMessage(m.chat, { 
-                    image: { url: './menu.jpg' }, 
-                    caption: menus[menuName] 
+                    imageMessage: { 
+                        url: './menu.jpg',
+                        caption: menus[menuName]
+                    }
                 });
             }
         };
@@ -417,7 +421,7 @@ handler.before = async (m, { conn }) => {
             
             if (yukiActive) {
                 await conn.sendMessage(m.chat, {
-                    text: `🤖 *يوكي جاهزة!*
+                    conversation: `🤖 *يوكي جاهزة!*
 
 *الأوامر:*
 • .يوكي [رسالة] - محادثة
@@ -430,7 +434,7 @@ handler.before = async (m, { conn }) => {
                 });
             } else {
                 await conn.sendMessage(m.chat, {
-                    text: `🤖 *تفعيل يوكي*
+                    conversation: `🤖 *تفعيل يوكي*
 
 اكتب ".يوكي" لتفعيل الذكاء الاصطناعي
 

@@ -60,7 +60,7 @@ let handler = async (m, { conn }) => {
       errorMsg += 'يرجى المحاولة مرة أخرى.';
     }
 
-    await conn.sendMessage(m.chat, { text: errorMsg });
+    await conn.sendMessage(m.chat, { conversation: errorMsg });
   }
 };
 

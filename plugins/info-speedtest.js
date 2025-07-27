@@ -10,12 +10,12 @@ const handler = async (m) => {
         if (stdout.trim()) {
             const match = stdout.match(/http[^"]+\.png/);
             const urlImagen = match ? match[0] : null;
-            await conn.sendMessage(m.chat, {image: {url: urlImagen}, caption: stdout.trim()});
+            await conn.sendMessage(m.chat, {imageMessage: {url: urlImagen, caption: stdout.trim()}});
         }
         if (stderr.trim()) { 
             const match2 = stderr.match(/http[^"]+\.png/);
             const urlImagen2 = match2 ? match2[0] : null;    
-            await conn.sendMessage(m.chat, {image: {url: urlImagen2}, caption: stderr.trim()});
+            await conn.sendMessage(m.chat, {imageMessage: {url: urlImagen2, caption: stderr.trim()}});
         }
     } catch (e) {
         o = e.message;

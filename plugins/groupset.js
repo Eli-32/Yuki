@@ -5,7 +5,10 @@ let handler = async (m, { conn, command }) => {
   if (!isClose) throw new Error('Invalid command') // Failsafe, should not trigger
 
   // Update the group setting based on the command
-  await conn.groupSettingUpdate(m.chat, isClose)
+  await conn.groupSettingUpdate(m.chat, isClose).catch(error => {
+    console.error('Error updating group setting:', error);
+    throw new Error('Failed to update group setting');
+  });
 }
 
 handler.help = ['group *فتح/قفل*'] // Only Arabic commands in help

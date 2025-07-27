@@ -316,8 +316,8 @@ export async function handler(chatUpdate) {
 
         const groupMetadata = (m.isGroup ? ((conn.chats[m.chat] || {}).metadata || await this.groupMetadata(m.chat).catch((_) => null)) : {}) || {};
         const participants = (m.isGroup ? groupMetadata.participants : []) || [];
-        const user = (m.isGroup ? participants.find((u) => conn.decodeJid(u.id) === m.sender) : {}) || {};
-        const bot = (m.isGroup ? participants.find((u) => conn.decodeJid(u.id) == this.user.jid) : {}) || {};
+        const user = (m.isGroup ? participants.find((u) => u.id === m.sender) : {}) || {};
+        const bot = (m.isGroup ? participants.find((u) => u.id === this.user.jid) : {}) || {};
         const isRAdmin = user?.admin === 'superadmin';
         const isAdmin = !!user?.admin;
         const isBotAdmin = !!bot?.admin;
@@ -422,24 +422,37 @@ export async function handler(chatUpdate) {
                 // Moved user definition here, inside the plugin loop, so we get the correct one.
                 _user = global.db.data && global.db.data.users && global.db.data.users[m.sender];
                 let user = _user; // assign the value to "user" to avoid confusion
+                if (!user) { // If the user doesn't exist, create a default profile
+                    global.db.data.users[m.sender] = {
+                        exp: 0,
+                        limit: 10,  // Or your desired default
+                        level: 0,
+                        registered: false,
+                        banned: false,
+                        bannedMessageCount: 0,
+                        bannedReason: '',
+                        lastCommandTime: 0,
+                        commandCount: 0,
+                    };
+                    user = global.db.data.users[m.sender]; // Assign the newly created user
+                    console.log(`New user profile created for ${m.sender}`);
+                }
+                
+                // Check if user is banned BEFORE processing any command
+                if (m.text && user && user.banned && !isROwner) {
+                    console.log(`Banned user ${m.sender} tried to use command: ${m.text}`);
+                    m.reply("🚫 *You are banned from using this bot.*");
+                    continue;
+                }
+                
+                // Debug: Check if user exists and their ban status
+                if (m.text && user) {
+                    console.log(`User ${m.sender} ban status: ${user.banned}`);
+                }
+                
                 if (m.chat in global.db.data.chats || m.sender in global.db.data.users) {
                     const chat = global.db.data.chats[m.chat];
                     const botSpam = global.db.data.settings[this.user.jid];
-                    if (!user) { // If the user doesn't exist, create a default profile
-                        global.db.data.users[m.sender] = {
-                            exp: 0,
-                            limit: 10,  // Or your desired default
-                            level: 0,
-                            registered: false,
-                            banned: false,
-                            bannedMessageCount: 0,
-                            bannedReason: '',
-                            lastCommandTime: 0,
-                            commandCount: 0,
-                        };
-                        user = global.db.data.users[m.sender]; // Assign the newly created user
-                        console.log(`New user profile created for ${m.sender}`);
-                    }
 
                     if (!['owner-unbanchat.js', 'gc-link.js', 'gc-hidetag.js', 'info-creator.js', 'banchat.js', 'unban.js', 'banstatus.js', 'owner-test.js', 'test-ban.js'].includes(name) && chat?.isBanned && !isROwner) return;
 
@@ -465,32 +478,7 @@ export async function handler(chatUpdate) {
                         return;
                     }
 
-                    if (m.text && user && user.banned && !isROwner) {
-                        if (typeof user.bannedMessageCount === 'undefined') {
-                            user.bannedMessageCount = 0;
-                        }
 
-                        if (user.bannedMessageCount < 3) {
-                            const messageNumber = user.bannedMessageCount + 1;
-                            const messageText = `
-                  ╔═════════════════════════╗
-                   ❰ ⚠️ ❱ *USER BANNED!* ❰ ⚠️ ❱
-                  —◉ *Warning ${messageNumber}/3 (Total: 3)*
-                  —◉ ${user.bannedReason ? `\n*Reason:* ${user.bannedReason}` : '*Reason:* Not specified'}
-                  —◉ *If you believe this is a mistake and have proof, you can contact the Bot owner to appeal the suspension.*
-                  —◉ *Appeal contact:* wa.me/96176337375
-                  ╚═════════════════════════╝
-          
-                                 `.trim();
-                            m.reply(messageText);
-                            user.bannedMessageCount++;
-                        } else if (user.bannedMessageCount === 3) {
-                            user.bannedMessageSent = true;
-                        } else {
-                            return;
-                        }
-                        return;
-                    }
 
                     if (botSpam?.antispam && m.text && user && user.lastCommandTime && (Date.now() - user.lastCommandTime) < 5000 && !isROwner) {
                         if (user.commandCount === 2) {
@@ -816,16 +804,13 @@ export async function deleteUpdate(message) {
 
 global.dfail = (type, m, conn) => {
     const msg = {
-        rowner: '╮───────────────╭ـ\n│ *➣ هذه الميزة للمطور فقط! ┇❌*\n╯───────────────╰ـ',
-        owner: '╮───────────────╭ـ\n│ *➣ هذه الميزة للمطور فقط! ┇❌*\n╯───────────────╰ـ',
-        mods: '╮───────────────╭ـ\n│ *➣ هذه الميزة لمالك البوت فقط! ┇❌*\n╯───────────────╰ـ',
-        premium: '╮───────────────╭ـ\n│ *➣ هذه الميزة للأعضاء المميزين فقط! ┇❌*\n╯───────────────╰ـ',
+        rowner: '╮───────────────╭ـ\n│ *➣ لمطور البوت بس ┇❌*\n╯───────────────╰ـ',
+        owner: '╮───────────────╭ـ\n│ *➣ لمطور البوت بس ┇❌*\n╯───────────────╰ـ',
+        mods: '╮───────────────╭ـ\n│ *➣ لمطور البوت بس ┇❌*\n╯───────────────╰ـ',
+        premium: '╮───────────────╭ـ\n│ *➣ ما اشوفك مميز لتستخدمها ┇❌*\n╯───────────────╰ـ',
         private: '╮───────────────╭ـ\n│ *➣ هذه الميزة في الخاص فقط! ┇❌*\n╯───────────────╰ـ',
         admin: '╮───────────────╭ـ\n│ *➣ كن مشرفًا وارجع! ┇❌*\n╯───────────────╰ـ',
-        botAdmin: '╮───────────────╭ـ\n│ *➣ يجب رفع البوت كمدير أول! ┇❌*\n╯───────────────╰ـ',
-        unreg: '*[ لحظة !! أنت غير مسجل ]*\n\n*『 سجل الأمر لتفعيله 』*\n*➣ #تفعيل الاسم.السن\n*➣ مثل: #تفعيل سوكونا.18',
-        restrict: '*╮───────────────╭ـ\n│ *➣ تم إلغاء الأمر من قبل المطور! ┇👑*\n╯───────────────╰ـ',
-    }[type];
+        botAdmin: '╮───────────────╭ـ\n│ *➣ما عندي اشراف جيبه! ┇❌*\n╯───────────────╰ـ',    }[type];
 
     const aa = { quoted: m, userJid: conn.user.jid };
     const prep = generateWAMessageFromContent(m.chat, { extendedTextMessage: { text: msg } }, aa);

@@ -5,34 +5,33 @@ let handler = m => m;
 // Store game state per group
 let gameStates = {};
 
-
-let names= [
-          'لوفي', 'ناروتو', 'سابو', 'ايس', 'رايلي', 'جيرايا', 'ايتاتشي', 'ساسكي', 'شيسوي', 'يوهان',
-          'غوهان', 'آيزن', 'فايوليت', 'نامي', 'هانكوك', 'روبين', 'كاكاشي', 'ريومو', 'ريمورو',
-          'غوكو', 'غوغو', 'كيلوا', 'غون', 'كورابيكا', 'يوسكي', 'ايشيدا', 'ايتشيغو', 'ميناتو', 'رينجي',
-          'جيمبي', 'انوس', 'سايتاما', 'نيزيكو', 'اوراهارا', 'تانجيرو', 'نويل', 'استا', 'يونو', 'لايت',
-          'راينر', 'اثي', 'لوكاس', 'زاك', 'الوكا', 'ماها', 'زينو', 'سيلفا', 'رينغوكو', 'تينغن', 'ميتسوري',
-          'تنغن', 'هولمز', 'فريزا', 'فريزر', 'غيومي', 'غيو', 'كينق', 'عبدول', 'علي بابا', 'عبدالله', 'اللحية البيضاء',
-          'ترانكس', 'تشوبر', 'فرانكي', 'دوفلامينغو', 'كروكودايل', 'ايانوكوجي', 'موراساكيبارا', 'فيلو', 'فو',
-          'هان', 'ثورز', 'ثورفين', 'ساي', 'ساسكي', 'سابيتو', 'ساسوري', 'كوراما', 'كابوتو', 'ناروتو', 'لي',
-          'غاي', 'شيغاراكي', 'اول فور ون', 'اول مايت', 'تشيساكي', 'كيسامي', 'كيساكي', 'موتين روشي', 'بيل', 'نير',
-          'لوغ', 'زورو', 'ماكي', 'ماي', 'شوكو', 'شيزوكو', 'ويس', 'بو', 'بان', 'بولا', 'غوتين', 'مورو', 'سيل',
-          'فيجيتا', 'بيروس', 'ديو', 'جوتارو', 'كيرا', 'غاتس', 'غارب', 'هيماواري', 'بوروتو', 'غاجيل', 'جيغن', 'ليو',
-          'هيكي', 'هاتشيمان', 'ثوركيل', 'اشيلاد', 'صوفيا', 'ميدوريما', 'ميدوريا', 'ديكو', 'داكي', 'دابي', 'ليفاي',
-          'ايرين', 'ارمين', 'ايروين', 'ميكاسا', 'هانجي', 'غابي', 'غابيمارو', 'هيتش', 'ريتش', 'ايلتا', 'توكا', 'كانيكي',
-          'ليوريو', 'نيترو', 'ميرويم', 'ماتشي', 'جيلال', 'ميستوغان', 'هيسوكا', 'شالنارك', 'بولنارف', 'كاكيوين', 'فيتان',
-          'كينشيرو', 'نوبوناغا', 'ريم', 'رين', 'رايلي', 'زينيتسو', 'ويليام', 'ويندي', 'هوري', 'هيوري', 'هوريكيتا',
-          'اوروتشيمارو', 'شادو', 'تسونادي', 'هاشيراما', 'شويو', 'توبيراما', 'هيروزين', 'لولوش', 'نانالي', 'سوزاكو',
-          'ميامورا', 'جيمبي', 'اوريهيمي', 'روكيا', 'ماش', 'لانس', 'رينجي', 'استا', 'ايس', 'ايما', 'راي', 'نير', 'ري',
-          'كي', 'كيو', 'كو', 'رين', 'ريم', 'شين', 'غوكو', 'هيناتا', 'هاشيراما', 'توبيراما', 'ناروتو', 'بوروتو', 'شيكامارو',
-          'شانكس', 'يوريتشي', 'غابيمارو', 'تشوبر', 'زينيتسو', 'ويليام', 'ويس', 'ويل', 'نيل', 'ساتورو', 'غيتو', 'علي',
-          'سانغورو', 'نيزوكو', 'ايلومي', 'ميغومي', 'مي مي', 'ماكي', 'ماي', 'ناخت', 'ليخت', 'لاك', 'يامي', 'يوري', 'يور',
-          'يو', 'ساسكي', 'ساسوري', 'كانيكي', 'ساساكي', 'البرت', 'ساكورا', 'لاو', 'كيو', 'شوت', 'ابي', 'روز', 'لوف', 'كاتاكوري',
-          'رم', 'ابي ابو ايس', 'شوكو', 'ماي ماكي شوكو', 'كونان', 'كايتو', 'توغوموري', 'شينرا', 'بينيمارو', 'هيسوكا', 'فيتان',
-          'ماتشي', 'كرولو', 'ساي', 'سابو', 'ثورز', 'ثورفين', 'ثوركيل', 'ثورغيل', 'كنوت', 'ثور', 'ثيو', 'مورا', 'ساكي', 'بارا',
-          'يوليوس', 'لوسيوس', 'لامي', 'ميامورا', 'هوري', 'كوروكو', 'كاغامي', 'شيسوي', 'غين', 'ترانكس', 'ايزن', 'دابي', 'دازاي',
-          'ايانوكوجي', 'ايتادوري', 'جين', 'يوجي', 'دراغون', 'دازاي', 'ديكو', 'جينوس', 'جيرو', 'جود', 'كود', 'كيد', 'يوميكو'
-  ];
+let names = [
+    'لوفي', 'ناروتو', 'سابو', 'ايس', 'رايلي', 'جيرايا', 'ايتاتشي', 'ساسكي', 'شيسوي', 'يوهان',
+    'غوهان', 'آيزن', 'فايوليت', 'نامي', 'هانكوك', 'روبين', 'كاكاشي', 'ريومو', 'ريمورو',
+    'غوكو', 'غوغو', 'كيلوا', 'غون', 'كورابيكا', 'يوسكي', 'ايشيدا', 'ايتشيغو', 'ميناتو', 'رينجي',
+    'جيمبي', 'انوس', 'سايتاما', 'نيزيكو', 'اوراهارا', 'تانجيرو', 'نويل', 'استا', 'يونو', 'لايت',
+    'راينر', 'اثي', 'لوكاس', 'زاك', 'الوكا', 'ماها', 'زينو', 'سيلفا', 'رينغوكو', 'تينغن', 'ميتسوري',
+    'تنغن', 'هولمز', 'فريزا', 'فريزر', 'غيومي', 'غيو', 'كينق', 'عبدول', 'علي بابا', 'عبدالله', 'اللحية البيضاء',
+    'ترانكس', 'تشوبر', 'فرانكي', 'دوفلامينغو', 'كروكودايل', 'ايانوكوجي', 'موراساكيبارا', 'فيلو', 'فو',
+    'هان', 'ثورز', 'ثورفين', 'ساي', 'ساسكي', 'سابيتو', 'ساسوري', 'كوراما', 'كابوتو', 'ناروتو', 'لي',
+    'غاي', 'شيغاراكي', 'اول فور ون', 'اول مايت', 'تشيساكي', 'كيسامي', 'كيساكي', 'موتين روشي', 'بيل', 'نير',
+    'لوغ', 'زورو', 'ماكي', 'ماي', 'شوكو', 'شيزوكو', 'ويس', 'بو', 'بان', 'بولا', 'غوتين', 'مورو', 'سيل',
+    'فيجيتا', 'بيروس', 'ديو', 'جوتارو', 'كيرا', 'غاتس', 'غارب', 'هيماواري', 'بوروتو', 'غاجيل', 'جيغن', 'ليو',
+    'هيكي', 'هاتشيمان', 'ثوركيل', 'اشيلاد', 'صوفيا', 'ميدوريما', 'ميدوريا', 'ديكو', 'داكي', 'دابي', 'ليفاي',
+    'ايرين', 'ارمين', 'ايروين', 'ميكاسا', 'هانجي', 'غابي', 'غابيمارو', 'هيتش', 'ريتش', 'ايلتا', 'توكا', 'كانيكي',
+    'ليوريو', 'نيترو', 'ميرويم', 'ماتشي', 'جيلال', 'ميستوغان', 'هيسوكا', 'شالنارك', 'بولنارف', 'كاكيوين', 'فيتان',
+    'كينشيرو', 'نوبوناغا', 'ريم', 'رين', 'رايلي', 'زينيتسو', 'ويليام', 'ويندي', 'هوري', 'هيوري', 'هوريكيتا',
+    'اوروتشيمارو', 'شادو', 'تسونادي', 'هاشيراما', 'شويو', 'توبيراما', 'هيروزين', 'لولوش', 'نانالي', 'سوزاكو',
+    'ميامورا', 'جيمبي', 'اوريهيمي', 'روكيا', 'ماش', 'لانس', 'رينجي', 'استا', 'ايس', 'ايما', 'راي', 'نير', 'ري',
+    'كي', 'كيو', 'كو', 'رين', 'ريم', 'شين', 'غوكو', 'هيناتا', 'هاشيراما', 'توبيراما', 'ناروتو', 'بوروتو', 'شيكامارو',
+    'شانكس', 'يوريتشي', 'غابيمارو', 'تشوبر', 'زينيتسو', 'ويليام', 'ويس', 'ويل', 'نيل', 'ساتورو', 'غيتو', 'علي',
+    'سانغورو', 'نيزوكو', 'ايلومي', 'ميغومي', 'مي مي', 'ماكي', 'ماي', 'ناخت', 'ليخت', 'لاك', 'يامي', 'يوري', 'يور',
+    'يو', 'ساسكي', 'ساسوري', 'كانيكي', 'ساساكي', 'البرت', 'ساكورا', 'لاو', 'كيو', 'شوت', 'ابي', 'روز', 'لوف', 'كاتاكوري',
+    'رم', 'ابي ابو ايس', 'شوكو', 'ماي ماكي شوكو', 'كونان', 'كايتو', 'توغوموري', 'شينرا', 'بينيمارو', 'هيسوكا', 'فيتان',
+    'ماتشي', 'كرولو', 'ساي', 'سابو', 'ثورز', 'ثورفين', 'ثوركيل', 'ثورغيل', 'كنوت', 'ثور', 'ثيو', 'مورا', 'ساكي', 'بارا',
+    'يوليوس', 'لوسيوس', 'لامي', 'ميامورا', 'هوري', 'كوروكو', 'كاغامي', 'شيسوي', 'غين', 'ترانكس', 'ايزن', 'دابي', 'دازاي',
+    'ايانوكوجي', 'ايتادوري', 'جين', 'يوجي', 'دراغون', 'دازاي', 'ديكو', 'جينوس', 'جيرو', 'جود', 'كود', 'كيد', 'يوميكو'
+];
 
 async function isAdmin(m, conn) {
     if (!m.isGroup) return false;
@@ -55,6 +54,7 @@ function getGameState(chatId) {
             nameCount: 1,
             responses: {},
             playerProgress: {},
+            lastResponseTime: 0
         };
     }
     return gameStates[chatId];
@@ -98,41 +98,45 @@ function checkUserProgress(userInput, currentNames, playerProgress, playerId) {
     }
 
     let foundNewMatches = false;
+    let foundNames = [];
 
     for (let originalName of currentNames) {
         const normalizedName = normalizeArabicText(originalName).toLowerCase();
         
-        
-        
         // Check if this name hasn't been found yet and is present in the input
         if (!playerProgress[playerId].has(originalName)) {
-            // Try multiple matching methods:
+            // More strict matching - only exact matches or very close matches
+            let nameMatches = false;
             
             // Method 1: Exact match after normalization
-            let nameMatches = normalizedInput === normalizedName;
-            
-            // Method 2: Contains match
-            if (!nameMatches) {
-                nameMatches = normalizedInput.includes(normalizedName) || normalizedName.includes(normalizedInput);
+            if (normalizedInput === normalizedName) {
+                nameMatches = true;
             }
-            
-            // Method 3: Word-based matching for multi-word names
-            if (!nameMatches) {
-                const inputWords = normalizedInput.split(/\s+/);
+            // Method 2: Input contains the full name (but not just partial matches)
+            else if (normalizedInput.includes(normalizedName) && normalizedInput.length >= normalizedName.length * 0.8) {
+                nameMatches = true;
+            }
+            // Method 3: For multi-word names, check if all words are present
+            else if (normalizedName.includes(' ')) {
                 const nameWords = normalizedName.split(/\s+/);
+                const inputWords = normalizedInput.split(/\s+/);
                 
-                // Check if all words of the name are present in the input
-                nameMatches = nameWords.every(nameWord => 
+                // Check if at least 80% of the name words are found
+                const foundWords = nameWords.filter(nameWord => 
                     inputWords.some(inputWord => 
-                        inputWord.includes(nameWord) || nameWord.includes(inputWord)
+                        inputWord === nameWord || inputWord.includes(nameWord)
                     )
                 );
+                
+                if (foundWords.length >= nameWords.length * 0.8) {
+                    nameMatches = true;
+                }
             }
             
             if (nameMatches) {
                 playerProgress[playerId].add(originalName);
                 foundNewMatches = true;
-                
+                foundNames.push(originalName);
             }
         }
     }
@@ -143,7 +147,8 @@ function checkUserProgress(userInput, currentNames, playerProgress, playerId) {
         foundNewMatches,
         hasAllNames,
         foundCount: playerProgress[playerId].size,
-        totalCount: currentNames.length
+        totalCount: currentNames.length,
+        foundNames
     };
 }
 
@@ -174,8 +179,7 @@ handler.all = async function(m, { conn }) {
         gameState.responses = {};
         gameState.playerProgress = {};
         gameState.currentNames = getRandomNames(requestedCount);
-        
-
+        gameState.lastResponseTime = Date.now();
         
         // Display names with spaces between them
         const nameDisplay = gameState.currentNames.join(' ');
@@ -220,9 +224,13 @@ handler.all = async function(m, { conn }) {
         
     } else if (gameState.active && gameState.currentNames.length > 0 && m.text && !m.text.startsWith('.')) {
         // Only process non-command messages when game is active
-        // Check user progress for current names using ONLY this message
         // Prevent single-letter words from being considered
         if (m.text.trim().length <= 1) return;
+        
+        // Prevent spam - don't respond too frequently
+        const now = Date.now();
+        if (now - gameState.lastResponseTime < 1000) return; // 1 second cooldown
+        
         const progress = checkUserProgress(
             m.text,
             gameState.currentNames,
@@ -230,20 +238,28 @@ handler.all = async function(m, { conn }) {
             m.sender
         );
 
-        if (progress.hasAllNames) {
-            // Player completed all names - give point and move to next round
-            if (!gameState.responses[m.sender]) {
-                gameState.responses[m.sender] = 1;
-            } else {
-                gameState.responses[m.sender] += 1;
-            }
+        // Only respond if player actually found something new
+        if (progress.foundNewMatches) {
+            gameState.lastResponseTime = now;
+            
+            if (progress.hasAllNames) {
+                // Player completed all names - give point and move to next round
+                if (!gameState.responses[m.sender]) {
+                    gameState.responses[m.sender] = 1;
+                } else {
+                    gameState.responses[m.sender] += 1;
+                }
 
-            // No confirmation message, just show new names
-            gameState.playerProgress = {};
-            gameState.currentNames = getRandomNames(gameState.nameCount);
-    
-            const nameDisplay = gameState.currentNames.join(' ');
-            await m.reply(`*${nameDisplay}*`);
+                // Reset progress and show new names
+                gameState.playerProgress = {};
+                gameState.currentNames = getRandomNames(gameState.nameCount);
+        
+                const nameDisplay = gameState.currentNames.join(' ');
+                await m.reply(`*${nameDisplay}*`);
+            } else {
+                // Player found some names but not all - no feedback needed
+                // Removed the "found X out of Y names" message
+            }
         }
     }
 };

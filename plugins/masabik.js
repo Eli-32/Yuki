@@ -5,8 +5,6 @@ let handler = m => m;
 // Store game state per group
 let gameStates = {};
 
-// Make game states globally accessible for anime detector integration
-global.masabikGameStates = gameStates;
 
 let names= [
           'لوفي', 'ناروتو', 'سابو', 'ايس', 'رايلي', 'جيرايا', 'ايتاتشي', 'ساسكي', 'شيسوي', 'يوهان',

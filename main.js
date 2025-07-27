@@ -2,18 +2,22 @@ import express from 'express';
 const app = express();
 const PORT = process.env.PORT || process.env.SERVER_PORT || 3000;
 app.get('/', (req, res) => res.send('Bot is running!'));
-app.listen(PORT, () => console.log(`Web server listening on port ${PORT}`));
-
-// Remove this problematic line that disables TLS verification
-// process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
-
+app.listen(PORT, () => {
+  if (!process.env.ELTA_CHILD_PROCESS) {
+    console.log(`Web server listening on port ${PORT}`);
+  }
+});
+// Only disable TLS if absolutely necessary
+if (process.env.DISABLE_TLS_VERIFICATION === 'true') {
+  process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+}
 import './config.js';
 import {createRequire} from 'module';
 import path, {join} from 'path';
 import {fileURLToPath, pathToFileURL} from 'url';
 import {platform} from 'process';
 import * as ws from 'ws';
-import {readdirSync, statSync, unlinkSync, existsSync, readFileSync, rmSync, watch} from 'fs';
+import {readdirSync, statSync, unlinkSync, existsSync, readFileSync, rmSync, watch, stat} from 'fs';
 import yargs from 'yargs';
 import {spawn} from 'child_process';
 import lodash from 'lodash';
@@ -39,7 +43,7 @@ import demotePkg from './plugins/demote.cjs';
 const { demoteCommand, handleDemotionEvent } = demotePkg;
 
 const {proto} = (await import('@whiskeysockets/baileys')).default;
-const {DisconnectReason, useMultiFileAuthState, MessageRetryMap, fetchLatestBaileysVersion, makeCacheableSignalKeyStore} = await import('@whiskeysockets/baileys');
+const {DisconnectReason, useMultiFileAuthState, MessageRetryMap, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, isJidBroadcast} = await import('@whiskeysockets/baileys');
 const {CONNECTING} = ws;
 const {chain} = lodash;
 
@@ -48,13 +52,9 @@ serialize();
 
 global.__filename = function filename(pathURL = import.meta.url, rmPrefix = platform !== 'win32') {
   return rmPrefix ? /file:\/\/\//.test(pathURL) ? fileURLToPath(pathURL) : pathURL : pathToFileURL(pathURL).toString();
-}; 
-
-global.__dirname = function dirname(pathURL) {
+}; global.__dirname = function dirname(pathURL) {
   return path.dirname(global.__filename(pathURL, true));
-}; 
-
-global.__require = function require(dir = import.meta.url) {
+}; global.__require = function require(dir = import.meta.url) {
   return createRequire(dir);
 };
 
@@ -95,9 +95,12 @@ global.loadDatabase = async function loadDatabase() {
       }
     }, 1 * 1000));
   }
-  if (global.db.data !== null) return;
+  if (global.db.data !== null) {
+    return;
+  }
   global.db.READ = true;
-  await global.db.read().catch(console.error);
+  await global.db.read().catch((error) => {
+    });
   global.db.READ = null;
   global.db.data ||= {
     users: {},
@@ -120,7 +123,6 @@ global.chatgpt = new Low(
   new JSONFile(path.join(__dirname, '/db/chatgpt.json')),
   defaultChatGPTData
 );
-
 global.loadChatgptDB = async function loadChatgptDB() {
   if (global.chatgpt.READ) {
     return new Promise((resolve) =>
@@ -131,9 +133,12 @@ global.loadChatgptDB = async function loadChatgptDB() {
         }
       }, 1 * 1000));
   }
-  if (global.chatgpt.data !== null) return;
+  if (global.chatgpt.data !== null) {
+    return;
+  }
   global.chatgpt.READ = true;
-  await global.chatgpt.read().catch(console.error);
+  await global.chatgpt.read().catch((error) => {
+    });
   global.chatgpt.READ = null;
   global.chatgpt.data = {
     users: {},
@@ -143,58 +148,14 @@ global.loadChatgptDB = async function loadChatgptDB() {
 };
 loadChatgptDB();
 
-// Add delay function for better connection handling
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
 global.authFile = `MyninoSession`;
+// Don't clean up session files on startup - they contain encryption keys
+const {state, saveState, saveCreds} = await useMultiFileAuthState(global.authFile);
 
-// Force clear everything and start fresh to avoid 405 errors
-try {
-  if (existsSync('./MyninoSession')) {
-    rmSync('./MyninoSession', { recursive: true, force: true });
-    console.log(chalk.yellow('🗑️ Cleared old session directory'));
-  }
-} catch (error) {
-  console.log(chalk.yellow('⚠️ Could not clear session directory:', error.message));
-}
-
-// Wait a bit before creating new session
-await delay(2000);
-
-// Clean up old session files before starting
-cleanupSession();
-
-// Suppress MongoDB deprecation warnings
-process.env.MONGODB_SILENCE_DEPRECATION_WARNINGS = '1';
-
-let state, saveState, saveCreds;
-try {
-  const authState = await useMultiFileAuthState(global.authFile);
-  state = authState.state;
-  saveState = authState.saveState;
-  saveCreds = authState.saveCreds;
-} catch (error) {
-  console.log(chalk.red('❌ Error loading auth state:', error.message));
-  // Create a new session if loading fails
-  const authState = await useMultiFileAuthState(global.authFile);
-  state = authState.state;
-  saveState = authState.saveState;
-  saveCreds = authState.saveCreds;
-}
-
-const msgRetryCounterMap = MessageRetryMap ? new MessageRetryMap() : {};
-
-let version;
-try {
-  const versionInfo = await fetchLatestBaileysVersion();
-  version = versionInfo.version;
-} catch (error) {
-  console.log(chalk.yellow('⚠️ Could not fetch latest Baileys version, using default'));
-  version = [2, 2413, 1];
-}
-
+const msgRetryCounterMap = (MessageRetryMap) => { };
+const {version} = await fetchLatestBaileysVersion();
 const connectionOptions = {
-  printQRInTerminal: true,
+  // Removed deprecated printQRInTerminal option
   patchMessageBeforeSending: (message) => {
     const requiresPatch = !!( message.buttonsMessage || message.templateMessage || message.listMessage );
     if (requiresPatch) {
@@ -204,36 +165,41 @@ const connectionOptions = {
   },
   getMessage: async (key) => {
     if (store) {
-      try {
-        const msg = await store.loadMessage(key.remoteJid, key.id);
-        return msg?.message || undefined;
-      } catch (error) {
-        return undefined;
-      }
+      const msg = await store.loadMessage(key.remoteJid, key.id);
+      return conn.chats[key.remoteJid] && conn.chats[key.remoteJid].messages[key.id] ? conn.chats[key.remoteJid].messages[key.id].message : undefined;
     }
     return proto.Message.fromObject({});
   },
   msgRetryCounterMap,
-  logger: pino({level: 'fatal'}), // Changed from 'silent' to 'fatal'
+  logger: pino({level: 'silent'}),
   auth: {
     creds: state.creds,
-    keys: makeCacheableSignalKeyStore(state.keys, pino({level: 'fatal'})),
+    keys: makeCacheableSignalKeyStore(state.keys, pino({level: 'silent'})),
   },
-  // Use WhatsApp Web browser signature (most important change)
-  browser: ['WhatsApp Web', 'Chrome', '4.0.0'],
+  // Simplified browser identification
+  browser: ['Chrome (Linux)', '', ''],
   version,
-  // Disable problematic features causing 405
+  defaultQueryTimeoutMs: 60_000,
+  // Session management options
   syncFullHistory: false,
   markOnlineOnConnect: false,
   fireInitQueries: false,
   generateHighQualityLinkPreview: false,
   emitOwnEvents: false,
-  receivedPendingNotifications: false,
-  // Add mobile configuration
-  mobile: false,
-  // Add this critical fix for recent WhatsApp changes
+  // Add connection timeout
+  connectTimeoutMs: 30_000,
+  // Add retry options
+  retryRequestDelayMs: 1000,
+  maxRetries: 3,
+  // Session management improvements
+  shouldIgnoreJid: jid => isJidBroadcast(jid),
+
+  // Add session management
+  sessionId: 'ELTA_BOT',
+  // Enable proper message handling
   shouldSyncHistoryMessage: () => false,
-  shouldIgnoreJid: () => false,
+  // Disable session timeout to preserve encryption keys
+  sessionTimeoutMs: 0,
 };
 
 global.conn = makeWASocket(connectionOptions);
@@ -241,15 +207,197 @@ conn.isInit = false;
 conn.well = false;
 conn.logger.info(`Loading...\n`);
 
+// Enhanced session management function
+const handleSessionCreation = async (jid) => {
+  try {
+    if (jid.includes('@lid')) {
+      return;
+    }
+    
+    // Step 1: Subscribe to presence
+    await conn.presenceSubscribe(jid).catch(() => {});
+    
+    // Step 2: Only do presence subscription, no PreKey bundle requests
+    
+    // Step 3: Add to session cache
+    global.sessionCache.add(jid);
+    
+    } catch (error) {
+    }
+};
+
+// Session cache to track managed sessions
+global.sessionCache = new Set();
+
+// ⚠️ IMPORTANT: All session management functions are SILENT
+// They should NEVER send messages to users - only establish encryption sessions
+// This prevents unwanted messages and spam
+
+// Global JID normalization utility
+global.normalizeJid = (jid) => {
+  if (!jid || typeof jid !== 'string') return jid;
+  
+  // Handle @lid format - these are special identifiers that WhatsApp uses
+  // for contacts that don't want to share their phone numbers
+  if (jid.includes('@lid')) {
+    return jid; // Keep @lid as is - WhatsApp handles these internally
+  }
+  
+  // Handle @c.us format (old format)
+  if (jid.includes('@c.us')) {
+    return jid.replace('@c.us', '@s.whatsapp.net');
+  }
+  
+  // Handle @s.whatsapp.net format (current standard)
+  if (jid.includes('@s.whatsapp.net')) {
+    return jid;
+  }
+  
+  // Handle @g.us format (groups)
+  if (jid.includes('@g.us')) {
+    return jid;
+  }
+  
+  // If no suffix, assume it's a phone number and add @s.whatsapp.net
+  if (!jid.includes('@')) {
+    return jid + '@s.whatsapp.net';
+  }
+  
+  return jid;
+};
+
+// Global function to check if JID is @lid
+global.isLidContact = (jid) => {
+  return jid && typeof jid === 'string' && jid.includes('@lid');
+};
+
+// Global function for immediate session creation (SILENT - NO MESSAGES)
+global.createImmediateSession = async (jid) => {
+  try {
+    if (jid.includes('@lid')) {
+      return;
+    }
+    
+    // Step 1: Subscribe to presence immediately (silent)
+    await conn.presenceSubscribe(jid).catch(() => {});
+    
+    // Step 2: Only do presence subscription, no PreKey bundle requests
+    
+    // Step 3: Add to session cache
+    global.sessionCache.add(jid);
+    
+    // Step 4: Silent session establishment (NO MESSAGES SENT)
+    // We rely only on presence subscription and PreKey bundles
+    // This ensures no unwanted messages are sent to users
+    } catch (error) {
+    }
+};
+
+// Global function to force session refresh for problematic users (SILENT - NO MESSAGES)
+global.forceSessionRefresh = async (jid) => {
+  try {
+    if (jid.includes('@lid')) {
+      return;
+    }
+    
+    // Remove from cache to force recreation
+    global.sessionCache.delete(jid);
+    
+    // Recreate session immediately (silent - no messages sent)
+    await global.createImmediateSession(jid);
+    
+    } catch (error) {
+    }
+};
+
+// Proactive session management
+const initializeSessionManagement = async () => {
+  try {
+    // Get all chats to establish sessions - use the correct method
+    const chats = await conn.getChats ? await conn.getChats() : [];
+    // If getChats is not available, we'll rely on dynamic session creation
+    if (!conn.getChats) {
+      // Set up periodic session refresh for existing sessions
+      setInterval(async () => {
+        try {
+          for (const jid of global.sessionCache) {
+            // Skip @lid contacts in refresh
+            if (!jid.includes('@lid')) {
+              await conn.presenceSubscribe(jid).catch(() => {});
+            }
+          }
+          } catch (error) {
+          }
+      }, 300000); // Refresh every 5 minutes (less aggressive)
+      return;
+    }
+    
+    // Enhanced session creation for all chat participants
+    for (const chat of chats) {
+      try {
+        if (chat.id.endsWith('@g.us')) {
+          // Group chat - get participants
+          const participants = await conn.groupMetadata(chat.id).catch(() => null);
+          if (participants && participants.participants) {
+            for (const participant of participants.participants) {
+              // Skip @lid contacts as they don't need traditional session management
+              if (!participant.id.includes('@lid')) {
+                // Enhanced session creation for group participants
+                await conn.presenceSubscribe(participant.id).catch(() => {});
+                
+                            // Only do presence subscription, no PreKey bundle requests
+                
+                global.sessionCache.add(participant.id);
+                } else {
+                }
+            }
+          }
+        } else {
+          // Individual chat - skip @lid contacts
+          if (!chat.id.includes('@lid')) {
+            // Enhanced session creation for individual chats
+            await conn.presenceSubscribe(chat.id).catch(() => {});
+            
+            // Only do presence subscription, no PreKey bundle requests
+            
+            global.sessionCache.add(chat.id);
+            } else {
+            }
+        }
+      } catch (error) {
+        }
+    }
+    
+    // Set up periodic session refresh with enhanced methods
+    setInterval(async () => {
+      try {
+        for (const jid of global.sessionCache) {
+          // Skip @lid contacts in refresh
+          if (!jid.includes('@lid')) {
+            await conn.presenceSubscribe(jid).catch(() => {});
+            
+            // Only do presence subscription, no PreKey bundle requests
+          }
+        }
+        } catch (error) {
+        }
+    }, 120000); // Refresh every 2 minutes (more aggressive)
+    
+  } catch (error) {
+    }
+};
+
 if (!opts['test']) {
   if (global.db) {
-    setInterval(async () => {
-      if (global.db.data) await global.db.write().catch(console.error);
+    // Store interval references globally
+    global.dbInterval = setInterval(async () => {
+      if (global.stopped === 'close' || !conn?.user) return;
+      if (global.db.data) await global.db.write();
       if (opts['autocleartmp'] && (global.support || {}).find) {
         const tmp = [tmpdir(), 'tmp', 'jadibts'];
         tmp.forEach((filename) => spawn('find', [filename, '-amin', '3', '-type', 'f', '-delete']));
       }
-    }, 60 * 1000);
+    }, 120 * 1000); // Increased from 60s to 120s to reduce I/O operations
   }
 }
 
@@ -258,317 +406,301 @@ if (opts['server']) (await import('./server.js')).default(global.conn, PORT);
 function clearTmp() {
   const tmp = [tmpdir(), join(__dirname, './tmp')];
   const filename = [];
-  tmp.forEach((dirname) => {
-    try {
-      readdirSync(dirname).forEach((file) => filename.push(join(dirname, file)));
-    } catch (error) {
-      // Directory might not exist, ignore error
-    }
-  });
+  tmp.forEach((dirname) => readdirSync(dirname).forEach((file) => filename.push(join(dirname, file))));
   return filename.map((file) => {
-    try {
-      const stats = statSync(file);
-      if (stats.isFile() && (Date.now() - stats.mtimeMs >= 1000 * 60 * 3)) {
-        unlinkSync(file);
-        return true;
-      }
-    } catch (error) {
-      // File might not exist, ignore error
-    }
+    const stats = statSync(file);
+    if (stats.isFile() && (Date.now() - stats.mtimeMs >= 1000 * 60 * 3)) return unlinkSync(file); // 3 minutes
     return false;
   });
 }
 
 function purgeSession() {
-  try {
-    let prekey = [];
-    let directorio = readdirSync("./MyninoSession");
-    let filesFolderPreKeys = directorio.filter(file => {
-      return file.startsWith('pre-key-');
-    });
-    prekey = [...prekey, ...filesFolderPreKeys];
-    filesFolderPreKeys.forEach(files => {
+  let prekey = []
+  let directorio = readdirSync("./MyninoSession")
+  let filesFolderPreKeys = directorio.filter(file => {
+    if (file.startsWith('pre-key-')) {
       try {
-        unlinkSync(`./MyninoSession/${files}`);
-      } catch (error) {
-        console.log(chalk.yellow(`Could not delete ${files}:`, error.message));
+        const filePath = `./MyninoSession/${file}`;
+        const stats = statSync(filePath);
+        // Only delete pre-keys older than 24 hours
+        return (Date.now() - stats.mtimeMs) > (24 * 60 * 60 * 1000);
+      } catch (e) {
+        return false;
       }
-    });
-  } catch (error) {
-    console.log(chalk.yellow('Error in purgeSession:', error.message));
-  }
+    }
+    return false;
+  })
+  
+  filesFolderPreKeys.forEach(files => {
+    unlinkSync(`./MyninoSession/${files}`)
+    console.log(`Deleted old pre-key: ${files}`)
+  })
 }
 
 function purgeSessionSB() {
-  try {
-    let listaDirectorios = readdirSync('./jadibts/');
-    let SBprekey = [];
-    listaDirectorios.forEach(directorio => {
-      try {
-        if (statSync(`./jadibts/${directorio}`).isDirectory()) {
-          let DSBPreKeys = readdirSync(`./jadibts/${directorio}`).filter(fileInDir => {
-            return fileInDir.startsWith('pre-key-');
-          });
-          SBprekey = [...SBprekey, ...DSBPreKeys];
-          DSBPreKeys.forEach(fileInDir => {
-            try {
-              unlinkSync(`./jadibts/${directorio}/${fileInDir}`);
-            } catch (error) {
-              console.log(chalk.yellow(`Could not delete ${fileInDir}:`, error.message));
-            }
-          });
-        }
-      } catch (error) {
-        console.log(chalk.yellow(`Error processing directory ${directorio}:`, error.message));
-      }
-    });
-    if (SBprekey.length === 0) return;
-  } catch (err) {
-    console.log(chalk.bold.red(`=> Something went wrong during deletion, files not deleted`));
-  }
+try {
+let listaDirectorios = readdirSync('./jadibts/');
+let SBprekey = []
+listaDirectorios.forEach(directorio => {
+if (statSync(`./jadibts/${directorio}`).isDirectory()) {
+let DSBPreKeys = readdirSync(`./jadibts/${directorio}`).filter(fileInDir => {
+return fileInDir.startsWith('pre-key-') /*|| fileInDir.startsWith('app-') || fileInDir.startsWith('session-')*/
+})
+SBprekey = [...SBprekey, ...DSBPreKeys]
+DSBPreKeys.forEach(fileInDir => {
+unlinkSync(`./jadibts/${directorio}/${fileInDir}`)
+})
 }
+})
+if (SBprekey.length === 0) return;
+} catch (err) {
+if (!process.env.ELTA_CHILD_PROCESS) {
+console.log(chalk.bold.red(`=> Something went wrong during deletion, files not deleted`))
+}
+}}
 
 function purgeOldFiles() {
   const directories = ['./MyninoSession/', './jadibts/'];
-  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000); // Changed from 1 hour to 24 hours
   directories.forEach(dir => {
     try {
       if (!existsSync(dir)) return;
       const files = readdirSync(dir);
       files.forEach(file => {
+        // NEVER delete encryption keys
+        if (file.startsWith('pre-key-') || file.startsWith('session-') || 
+            file.startsWith('sender-key-') || file === 'creds.json') {
+          return; // Skip encryption keys
+        }
+        
         const filePath = path.join(dir, file);
         try {
           const stats = statSync(filePath);
-          if (stats.isFile() && stats.mtimeMs < oneHourAgo && file !== 'creds.json') {
+          if (stats.isFile() && stats.mtimeMs < oneDayAgo) {
             unlinkSync(filePath);
-            console.log(chalk.bold.green(`File ${file} successfully deleted`));
+            if (!process.env.ELTA_CHILD_PROCESS) {
+              console.log(chalk.bold.green(`File ${file} successfully deleted`));
+            }
           }
         } catch (err) {
-          console.log(chalk.bold.red(`File ${file} not deleted: ${err.message}`));
+          if (!process.env.ELTA_CHILD_PROCESS) {
+            console.log(chalk.bold.red(`File ${file} not deleted: ${err.message}`));
+          }
         }
       });
     } catch (err) {
-      console.log(chalk.bold.red(`Error accessing directory ${dir}: ${err.message}`));
+      if (!process.env.ELTA_CHILD_PROCESS) {
+        console.log(chalk.bold.red(`Error accessing directory ${dir}: ${err.message}`));
+      }
     }
   });
 }
 
+// Improved session cleanup function
 function cleanupSession() {
   try {
     const sessionDir = './MyninoSession';
     if (existsSync(sessionDir)) {
       const files = readdirSync(sessionDir);
       files.forEach(file => {
-        if (file.endsWith('.json') && file !== 'creds.json') {
+        // Only delete temporary/cache files, keep ALL encryption keys
+        if (file.startsWith('app-state-') || file.startsWith('baileys_store_')) {
           const filePath = `${sessionDir}/${file}`;
-          try {
-            const stats = statSync(filePath);
-            // Remove files older than 24 hours
-            if (Date.now() - stats.mtimeMs > 24 * 60 * 60 * 1000) {
-              unlinkSync(filePath);
-              console.log(chalk.yellow(`🗑️ Cleaned up old session file: ${file}`));
+          if (existsSync(filePath)) {
+            unlinkSync(filePath);
+            if (!process.env.ELTA_CHILD_PROCESS) {
+              console.log(chalk.yellow(`🗑️ Cleaned up temp file: ${file}`));
             }
-          } catch (error) {
-            console.log(chalk.yellow(`Could not process ${file}:`, error.message));
           }
         }
+        // KEEP: creds.json, pre-key-*.json, session-*.json, sender-key-*.json
       });
-    }
+      } else {
+      }
   } catch (error) {
-    console.log(chalk.yellow('⚠️ Error cleaning session files:', error.message));
+    if (!process.env.ELTA_CHILD_PROCESS) {
+      console.log(chalk.yellow('⚠️ Session cleanup error:', error.message));
+    }
   }
 }
-
-// Initialize reconnection attempts
-global.reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 10;
 
 async function connectionUpdate(update) {
   const { connection, lastDisconnect, isNewLogin, qr } = update;
   global.stopped = connection;
   
-  if (isNewLogin) conn.isInit = true;
-  
-  const code = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode;
+  if (isNewLogin) {
+    conn.isInit = true;
+  }
 
-  // Handle QR Code Display
+  const code = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode;
+  // QR Code handling with debug
   if (qr) {
-    console.log(chalk.yellow('📱 Scan this QR code with your WhatsApp app:'));
-    qrcode.generate(qr, { small: true });
+    if (!process.env.ELTA_CHILD_PROCESS) {
+      console.log(chalk.yellow('📱 Scan this QR code with your WhatsApp app:'));
+      try {
+        qrcode.generate(qr, { small: true });
+        } catch (error) {
+        }
+    }
     return;
   }
 
-  // Handle successful connection
+  // Connection state debugging
+  if (connection === 'connecting') {
+    }
+  
   if (connection === 'open') {
     global.reconnectAttempts = 0;
     global.startTime = Date.now();
-    console.log(chalk.green('✅ Successfully connected to WhatsApp'));
-    console.log(chalk.cyan(`👤 Connected as: ${conn.user?.name || 'Unknown'}`));
-    console.log(chalk.cyan(`📱 Phone: ${conn.user?.id || 'Unknown'}`));
+    
+    if (!process.env.ELTA_CHILD_PROCESS) {
+      console.log(chalk.green('✅ Successfully connected to WhatsApp'));
+      console.log(chalk.cyan(`👤 Connected as: ${conn.user?.name || 'Unknown'}`));
+      console.log(chalk.cyan(`📱 Phone: ${conn.user?.id || 'Unknown'}`));
+    }
+    
+    // Initialize proactive session management after connection
+    setTimeout(() => {
+      initializeSessionManagement();
+    }, 5000); // Wait 5 seconds after connection to ensure everything is ready
+    
+    // Log @lid detection info
+    // Test @lid functionality
+    const testJids = [
+      '1234567890@s.whatsapp.net',
+      '1234567890@lid',
+      '1234567890@c.us',
+      '1234567890'
+    ];
+    
+    testJids.forEach(jid => {
+      const normalized = global.normalizeJid(jid);
+      const isLid = global.isLidContact(jid);
+      });
     
     // Set status after successful connection
     setTimeout(async () => {
       try {
         await conn.updateProfileStatus('Hey there! I am using WhatsApp.');
-        console.log(chalk.green('✅ Status updated successfully'));
+        if (!process.env.ELTA_CHILD_PROCESS) {
+          console.log(chalk.green('✅ Status updated successfully'));
+        }
       } catch (error) {
-        console.log(chalk.yellow('⚠️ Could not update profile status:', error.message));
+        if (!process.env.ELTA_CHILD_PROCESS) {
+          console.log(chalk.yellow('⚠️ Could not update profile status:', error.message));
+        }
       }
     }, 5000);
-    return;
   }
 
-  // Handle disconnections
   if (connection === 'close') {
-    let reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
-    console.log(chalk.red(`❌ Disconnected (${reason || code || 'unknown'})`));
+    let reconnectAttempts = global.reconnectAttempts || 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
     
-    // Handle specific error codes
-    if (reason === 405) {
-      console.log(chalk.red('🚫 HTTP 405 Error - WhatsApp may have blocked this connection'));
-      console.log(chalk.yellow('💡 This should be fixed with the new connection settings'));
-      console.log(chalk.yellow('💡 If it persists, try the following:'));
-      console.log(chalk.yellow('   1. Wait 5-10 minutes before reconnecting'));
-      console.log(chalk.yellow('   2. Clear session files and scan QR again'));
-      console.log(chalk.yellow('   3. Use a different network/IP if possible'));
+    if (code && code !== DisconnectReason.loggedOut && conn?.ws.socket == null) {
+      reconnectAttempts++;
+      global.reconnectAttempts = reconnectAttempts;
       
-      // Clear session and wait before retry
-      try {
-        const sessionDir = './MyninoSession';
-        if (existsSync(sessionDir)) {
-          rmSync(sessionDir, { recursive: true, force: true });
-          console.log(chalk.yellow(`🗑️ Completely cleared session directory`));
+      if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
+        if (!process.env.ELTA_CHILD_PROCESS) {
+          console.log(chalk.red(`Connection error: ${code}. Attempting to reconnect (${reconnectAttempts})...`));
         }
-      } catch (error) {
-        console.log(chalk.yellow('⚠️ Could not clear session files:', error.message));
-      }
-      
-      // Wait shorter for 405 errors with new settings (5 minutes)
-      console.log(chalk.yellow('⏳ Waiting 5 minutes before retry...'));
-      setTimeout(() => {
-        console.log(chalk.yellow('🔄 Retrying connection...'));
-        process.send?.('reset') || process.exit(1);
-      }, 300000); // 5 minutes
-      return;
-    }
-    
-    // Handle logged out scenario
-    if (reason === DisconnectReason.loggedOut) {
-      console.log(chalk.red('🚫 Logged out, please scan QR code again'));
-      try {
-        const sessionDir = './MyninoSession';
-        if (existsSync(sessionDir)) {
-          readdirSync(sessionDir).forEach(file => {
-            if (file.endsWith('.json')) {
-              unlinkSync(`${sessionDir}/${file}`);
-            }
-          });
-        }
-      } catch (error) {
-        console.log(chalk.yellow('⚠️ Could not clear session files:', error.message));
-      }
-      setTimeout(() => process.send?.('reset') || process.exit(1), 3000);
-      return;
-    }
-
-    // Handle rate limiting (429) and other connection issues
-    if (reason === 429 || reason === 503) {
-      console.log(chalk.red('🚫 Rate limited or service unavailable'));
-      console.log(chalk.yellow('⏳ Waiting 5 minutes before retry...'));
-      setTimeout(() => {
-        console.log(chalk.yellow('🔄 Retrying connection...'));
-        process.send?.('reset') || process.exit(1);
-      }, 300000); // 5 minutes
-      return;
-    }
-
-    // Handle other disconnection reasons with reconnection logic
-    if (code && code !== DisconnectReason.loggedOut && conn?.ws?.socket == null) {
-      global.reconnectAttempts++;
-      
-      if (global.reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
-        console.log(chalk.red(`Connection error: ${code}. Attempting to reconnect (${global.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`));
-        
-        // More conservative backoff with new settings
-        const delay = Math.min(60000, 3000 * Math.pow(1.5, global.reconnectAttempts - 1));
-        console.log(chalk.yellow(`⏳ Waiting ${delay/1000} seconds before reconnection...`));
-        
         setTimeout(async () => {
           try {
             await global.reloadHandler(true);
             global.timestamp.connect = new Date();
           } catch (error) {
-            console.error(chalk.red('❌ Reconnection failed:', error.message));
+            // Handle error silently
           }
-        }, delay);
+        }, Math.min(30000, 2000 * reconnectAttempts));
       } else {
-        console.log(chalk.red('❌ Max reconnect attempts reached. Restarting process...'));
-        setTimeout(() => process.send?.('reset') || process.exit(1), 3000);
+        if (!process.env.ELTA_CHILD_PROCESS) {
+          console.log(chalk.red('Max reconnect attempts reached. Resetting session...'));
+        }
+        cleanupSession();
+        process.send('reset');
       }
       return;
     }
-
-    // Default reconnection for other cases
+    
+    if (code === DisconnectReason.loggedOut) {
+      cleanupSession();
+    }
+    
     setTimeout(() => {
-      console.log(chalk.yellow('🔄 Attempting to reconnect...'));
-      process.send?.('reset') || process.exit(1);
-    }, 5000); // Wait 5 seconds with new settings
+      process.send('reset');
+    }, 3000);
   }
 }
 
-// Enhanced process signal handlers
-process.on('SIGTERM', () => {
-  console.log(chalk.yellow('⚠️ Received SIGTERM, shutting down gracefully...'));
-  if (global.conn?.ws?.close) {
+// Cleanup function for graceful shutdown (called by process manager)
+let isShuttingDown = false;
+
+function cleanup() {
+  if (global.conn) {
     global.conn.ws.close();
   }
-  process.exit(0);
+  // Clear all intervals
+  clearInterval(global.dbInterval);
+  clearInterval(global.cleanupInterval);
+  clearInterval(global.purgeInterval);
+  clearInterval(global.purgeSBInterval);
+  clearInterval(global.purgeOldFilesInterval);
+  clearInterval(global.statusInterval);
+  }
+
+// Simple signal handlers for cleanup only (process manager handles exit)
+process.on('SIGTERM', () => {
+  if (!isShuttingDown) {
+    isShuttingDown = true;
+    cleanup();
+  }
 });
 
 process.on('SIGINT', () => {
-  console.log(chalk.yellow('⚠️ Received SIGINT, shutting down gracefully...'));
-  if (global.conn?.ws?.close) {
-    global.conn.ws.close();
+  if (!isShuttingDown) {
+    isShuttingDown = true;
+    cleanup();
   }
-  process.exit(0);
 });
 
 process.on('uncaughtException', (err) => {
-  console.error(chalk.red('❌ Uncaught Exception:'), err);
-  // Give some time for cleanup before exiting
-  setTimeout(() => process.exit(1), 5000);
+  if (!process.env.ELTA_CHILD_PROCESS) {
+    console.error(chalk.red('❌ Uncaught Exception:'), err);
+  }
+  // Don't exit immediately, let the connection handler deal with it
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error(chalk.red('❌ Unhandled Rejection at:'), promise, chalk.red('reason:'), reason);
-  // Don't exit immediately for unhandled rejections
+  if (!process.env.ELTA_CHILD_PROCESS) {
+    console.error(chalk.red('❌ Unhandled Rejection at:'), promise, chalk.red('reason:'), reason);
+  }
+  // Don't exit immediately, let the connection handler deal with it
 });
 
 let isInit = true;
 let handler = await import('./handler.js');
-
 global.reloadHandler = async function(restatConn) {
   try {
-    const Handler = await import(`./handler.js?update=${Date.now()}`).catch(console.error);
-    if (Object.keys(Handler || {}).length) handler = Handler;
+    const Handler = await import(`./handler.js?update=${Date.now()}`).catch((error) => {
+      return null;
+    });
+    if (Object.keys(Handler || {}).length) {
+      handler = Handler;
+      }
   } catch (e) {
-    console.error('Error reloading handler:', e);
-  }
+    }
   
   if (restatConn) {
-    const oldChats = global.conn?.chats || {};
+    const oldChats = global.conn.chats;
+    console.log(`Reconnecting with ${Object.keys(oldChats).length} chats`);
+    
     try {
-      if (global.conn?.ws?.close) {
-        global.conn.ws.close();
+      global.conn.ws.close();
+      } catch (error) {
       }
-    } catch (error) {
-      console.log(chalk.yellow('Error closing old connection:', error.message));
-    }
     
-    if (global.conn?.ev?.removeAllListeners) {
-      conn.ev.removeAllListeners();
-    }
-    
+    conn.ev.removeAllListeners();
     global.conn = makeWASocket(connectionOptions, {chats: oldChats});
     isInit = true;
   }
@@ -583,6 +715,7 @@ global.reloadHandler = async function(restatConn) {
     conn.ev.off('creds.update', conn.credsUpdate);
   }
 
+  // Register event handlers with debugging
   conn.handler = handler.handler.bind(global.conn);
   conn.participantsUpdate = handler.participantsUpdate.bind(global.conn);
   conn.groupsUpdate = handler.groupsUpdate.bind(global.conn);
@@ -590,6 +723,14 @@ global.reloadHandler = async function(restatConn) {
   conn.onCall = handler.callUpdate.bind(global.conn);
   conn.connectionUpdate = connectionUpdate.bind(global.conn);
   conn.credsUpdate = saveCreds.bind(global.conn, true);
+
+  const currentDateTime = new Date();
+  const messageDateTime = new Date(conn.ev);
+  if (currentDateTime >= messageDateTime) {
+    const chats = Object.entries(conn.chats).filter(([jid, chat]) => !jid.endsWith('@g.us') && chat.isChats).map((v) => v[0]);
+  } else {
+    const chats = Object.entries(conn.chats).filter(([jid, chat]) => !jid.endsWith('@g.us') && chat.isChats).map((v) => v[0]);
+  }
 
   conn.ev.on('messages.upsert', conn.handler);
   conn.ev.on('group-participants.update', conn.participantsUpdate);
@@ -604,43 +745,57 @@ global.reloadHandler = async function(restatConn) {
 };
 
 async function handleGroupParticipantUpdate(sock, update) {
-  console.log('Group participant update:', JSON.stringify(update, null, 2));
-  try {
-    const { id, participants, action, author } = update;
-    if (!id.endsWith('@g.us')) return;
-    
-    if (action === 'promote') {
-      await handlePromotionEvent(sock, id, participants, author);
-      return;
+    if (!process.env.ELTA_CHILD_PROCESS) {
+        console.log('Group participant update:', JSON.stringify(update, null, 2));
     }
-    
-    if (action === 'demote') {
-      await handleDemotionEvent(sock, id, participants, author);
-      return;
+    try {
+        const { id, participants, action, author } = update;
+        // Check if it's a group
+        if (!id.endsWith('@g.us')) return;
+        // Handle promotion events
+        if (action === 'promote') {
+            await handlePromotionEvent(sock, id, participants, author);
+            return;
+        }
+        // Handle demotion events
+        if (action === 'demote') {
+            await handleDemotionEvent(sock, id, participants, author);
+            return;
+        }
+        // ... you can add more group participant event handling here if needed ...
+    } catch (err) {
+        console.error('Error in handleGroupParticipantUpdate:', err);
     }
-  } catch (err) {
-    console.error('Error in handleGroupParticipantUpdate:', err);
-  }
 }
 
-const pluginFolder = global.__dirname(join(__dirname, './plugins/index'));
-const pluginFilter = (filename) => /\.js$/.test(filename);
+const pluginFolder = join(__dirname, './plugins');
+// Only load .js files from the plugins folder (exclude .cjs files as they're handled separately)
+const pluginFilter = (filename) => /\.js$/.test(filename) && !filename.endsWith('.cjs');
 global.plugins = {};
-
 async function filesInit() {
-  for (const filename of readdirSync(pluginFolder).filter(pluginFilter)) {
+  // Check if directory exists
+  if (!existsSync(pluginFolder)) {
+    return;
+  }
+  
+  const allFiles = readdirSync(pluginFolder);
+  const pluginFiles = allFiles.filter(pluginFilter);
+  for (const filename of pluginFiles) {
     try {
       const file = global.__filename(join(pluginFolder, filename));
       const module = await import(file);
       global.plugins[filename] = module.default || module;
-    } catch (e) {
-      conn.logger.error('Error loading plugin:', filename, e);
+      } catch (e) {
       delete global.plugins[filename];
     }
   }
+  console.log(`Loaded ${pluginFiles.length} plugins`);
 }
-
-filesInit().then((_) => Object.keys(global.plugins)).catch(console.error);
+filesInit().then(() => {
+  console.log('Plugins initialized successfully');
+}).catch((error) => {
+  console.error('Error initializing plugins:', error);
+});
 
 global.reload = async (_ev, filename) => {
   if (pluginFilter(filename)) {
@@ -652,12 +807,10 @@ global.reload = async (_ev, filename) => {
         return delete global.plugins[filename];
       }
     } else conn.logger.info(`new plugin - '${filename}'`);
-    
     const err = syntaxerror(readFileSync(dir), filename, {
       sourceType: 'module',
       allowAwaitOutsideFunction: true,
     });
-    
     if (err) conn.logger.error(`syntax error while loading '${filename}'\n${format(err)}`);
     else {
       try {
@@ -671,11 +824,9 @@ global.reload = async (_ev, filename) => {
     }
   }
 };
-
 Object.freeze(global.reload);
 watch(pluginFolder, global.reload);
 await global.reloadHandler();
-
 async function _quickTest() {
   const test = await Promise.all([
     spawn('ffmpeg'),
@@ -696,62 +847,53 @@ async function _quickTest() {
         p.on('error', (_) => resolve(false));
       })]);
   }));
-  
   const [ffmpeg, ffprobe, ffmpegWebp, convert, magick, gm, find] = test;
   const s = global.support = {ffmpeg, ffprobe, ffmpegWebp, convert, magick, gm, find};
   Object.freeze(global.support);
-}
+  }
 
-// Cleanup intervals with better error handling
-setInterval(async () => {
-  try {
-    if (global.stopped === 'close' || !conn || !conn.user) return;
-    const a = await clearTmp();
+global.cleanupInterval = setInterval(async () => {
+  if (global.stopped === 'close' || !conn?.user) return;
+  const a = await clearTmp();
+  if (!process.env.ELTA_CHILD_PROCESS) {
     console.log(chalk.cyanBright(`\nAUTOCLEARTMP\n\nFILES DELETED ✅\n\n`));
-  } catch (error) {
-    console.log(chalk.yellow('Error in clearTmp interval:', error.message));
   }
 }, 180000);
 
-setInterval(async () => {
-  try {
-    if (global.stopped === 'close' || !conn || !conn.user) return;
-    await purgeSession();
-    console.log(chalk.cyanBright(`\nAUTOPURGESESSIONS\n\nFILES DELETED ✅\n\n`));
-  } catch (error) {
-    console.log(chalk.yellow('Error in purgeSession interval:', error.message));
+global.purgeInterval = setInterval(async () => {
+  if (global.stopped === 'close' || !conn?.user) return;
+  await purgeSession();
+  if (!process.env.ELTA_CHILD_PROCESS) {
+    console.log(chalk.cyanBright(`\nAUTOPURGESESSIONS\n\nOLD FILES DELETED ✅\n\n`));
   }
-}, 1000 * 60 * 60);
+}, 1000 * 60 * 60 * 6); // Changed from 1 hour to 6 hours
 
-setInterval(async () => {
-  try {
-    if (global.stopped === 'close' || !conn || !conn.user) return;
-    await purgeSessionSB();
+global.purgeSBInterval = setInterval(async () => {
+  if (global.stopped === 'close' || !conn?.user) return;
+  await purgeSessionSB();
+  if (!process.env.ELTA_CHILD_PROCESS) {
     console.log(chalk.cyanBright(`\nAUTO_PURGE_SESSIONS_SUB-BOTS\n\nFILES DELETED ✅\n\n`));
-  } catch (error) {
-    console.log(chalk.yellow('Error in purgeSessionSB interval:', error.message));
   }
 }, 1000 * 60 * 60);
 
-setInterval(async () => {
-  try {
-    if (global.stopped === 'close' || !conn || !conn.user) return;
-    await purgeOldFiles();
+global.purgeOldFilesInterval = setInterval(async () => {
+  if (global.stopped === 'close' || !conn?.user) return;
+  await purgeOldFiles();
+  if (!process.env.ELTA_CHILD_PROCESS) {
     console.log(chalk.cyanBright(`\nAUTO_PURGE_OLDFILES\n\nFILES DELETED ✅\n\n`));
-  } catch (error) {
-    console.log(chalk.yellow('Error in purgeOldFiles interval:', error.message));
   }
 }, 1000 * 60 * 60);
 
-setInterval(async () => {
+global.statusInterval = setInterval(async () => {
+  if (global.stopped === 'close' || !conn?.user) return;
+  // Update status less frequently to improve performance
+  const bio = `Hey there! I am using WhatsApp.`;
   try {
-    if (global.stopped === 'close' || !conn || !conn.user) return;
-    const bio = `Hey there! I am using WhatsApp.`;
     await conn.updateProfileStatus(bio);
   } catch (error) {
     // Silently handle errors to avoid spam
   }
-}, 7200000);
+}, 7200000); // Update every 2 hours instead of every hour
 
 function clockString(ms) {
   const d = isNaN(ms) ? '--' : Math.floor(ms / 86400000);

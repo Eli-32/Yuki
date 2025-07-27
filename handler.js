@@ -13,6 +13,8 @@ const handleDemotionEvent = demotePkg.handleDemotionEvent;
 import promotePkg from './plugins/promote.cjs';
 const handlePromotionEvent = promotePkg.handlePromotionEvent;
 
+
+
 const isNumber = (x) => typeof x === 'number' && !isNaN(x);
 const delay = (ms) => isNumber(ms) && new Promise((resolve) => setTimeout(function () {
     clearTimeout(this);
@@ -149,6 +151,20 @@ export async function handler(chatUpdate) {
         m.exp = 0;
         m.money = false;
         m.limit = false;
+
+        // Simplified Session Management - Only create session if we don't have one
+        if (m.sender && !global.sessionCache.has(m.sender)) {
+            // Only create session if we don't have one AND it's not @lid
+            if (!m.sender.includes('@lid')) {
+                try {
+                    await this.presenceSubscribe(m.sender).catch(() => {});
+                    global.sessionCache.add(m.sender);
+        
+                } catch (error) {
+
+                }
+            }
+        }
 
         // Initialize Chat and Settings Data (Moved outside user check for clarity)
         try {
@@ -338,7 +354,8 @@ export async function handler(chatUpdate) {
                 args = args || [];
                 const _args = noPrefix.trim().split` `.slice(1);
                 const text = _args.join` `;
-                command = (command || '').toLowerCase();
+                // Don't convert Arabic commands to lowercase as it can affect Arabic text
+                command = (command || '');
                 const fail = plugin.fail || global.dfail;
                 const isAccept = plugin.command instanceof RegExp ?
                     plugin.command.test(command) :

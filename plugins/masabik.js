@@ -102,7 +102,7 @@ function checkUserProgress(userInput, currentNames, playerProgress, playerId) {
     for (let originalName of currentNames) {
         const normalizedName = normalizeArabicText(originalName).toLowerCase();
         
-        console.log(`Checking: "${normalizedInput}" against "${normalizedName}" (original: "${originalName}")`); // Debug log
+        
         
         // Check if this name hasn't been found yet and is present in the input
         if (!playerProgress[playerId].has(originalName)) {
@@ -132,7 +132,7 @@ function checkUserProgress(userInput, currentNames, playerProgress, playerId) {
             if (nameMatches) {
                 playerProgress[playerId].add(originalName);
                 foundNewMatches = true;
-                console.log(`✓ Player ${playerId} found: ${originalName}`); // Debug log
+                
             }
         }
     }
@@ -175,7 +175,7 @@ handler.all = async function(m, { conn }) {
         gameState.playerProgress = {};
         gameState.currentNames = getRandomNames(requestedCount);
         
-        console.log(`Game started with names: ${gameState.currentNames.join(', ')}`); // Debug log
+
         
         // Display names with spaces between them
         const nameDisplay = gameState.currentNames.join(' ');
@@ -241,7 +241,7 @@ handler.all = async function(m, { conn }) {
             // No confirmation message, just show new names
             gameState.playerProgress = {};
             gameState.currentNames = getRandomNames(gameState.nameCount);
-            console.log(`New round with names: ${gameState.currentNames.join(', ')}`); // Debug log
+    
             const nameDisplay = gameState.currentNames.join(' ');
             await m.reply(`*${nameDisplay}*`);
         }

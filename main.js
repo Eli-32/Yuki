@@ -823,35 +823,68 @@ global.reloadHandler = async function(restatConn) {
     conn.ev.off('creds.update', conn.credsUpdate);
   }
 
-  // Register event handlers with debugging and encryption error handling
+  // Enhanced event handlers with comprehensive encryption error handling
   conn.handler = async (chatUpdate) => {
     try {
       await handler.handler.call(global.conn, chatUpdate);
     } catch (error) {
-      // Handle encryption errors specifically
-      if (error.message && (error.message.includes('No SenderKeyRecord found for decryption') || 
-                           error.message.includes('Invalid PreKey ID') ||
-                           error.message.includes('Bad MAC') ||
-                           error.message.includes('No matching sessions found'))) {
-        console.log(chalk.yellow('🔐 Encryption error in message handler, attempting recovery...'));
+      // Enhanced encryption error handling
+      const errorMessage = error.message || error.toString();
+      
+      if (errorMessage.includes('No SenderKeyRecord found for decryption') ||
+          errorMessage.includes('Invalid PreKey ID') ||
+          errorMessage.includes('Bad MAC') ||
+          errorMessage.includes('No matching sessions found') ||
+          errorMessage.includes('Failed to decrypt message') ||
+          errorMessage.includes('Session error')) {
         
-        // Extract JID from the error context
+        console.log(chalk.yellow('🔐 Encryption error detected in message handler'));
+        console.log(chalk.yellow(`🔍 Error details: ${errorMessage}`));
+        
+        // Extract JID from multiple possible sources
         let jid = null;
+        let messageInfo = '';
+        
         if (chatUpdate.messages && chatUpdate.messages.length > 0) {
           const message = chatUpdate.messages[0];
-          if (message.key && message.key.remoteJid) {
-            jid = message.key.remoteJid;
+          if (message.key) {
+            jid = message.key.remoteJid || message.key.participant;
+            messageInfo = `Message ID: ${message.key.id}`;
+          }
+        }
+        
+        // Try to extract JID from error message if not found
+        if (!jid && errorMessage.includes('@')) {
+          const jidMatch = errorMessage.match(/([0-9]+@[a-z.]+)/);
+          if (jidMatch) {
+            jid = jidMatch[1];
           }
         }
         
         if (jid) {
-          await handleEncryptionError(error, jid);
+          console.log(chalk.yellow(`🔧 Attempting recovery for JID: ${jid} ${messageInfo}`));
+          const recovered = await handleEncryptionError(error, jid);
+          
+          if (recovered) {
+            console.log(chalk.green(`✅ Successfully recovered session for ${jid}`));
+          } else {
+            console.log(chalk.red(`❌ Failed to recover session for ${jid}`));
+          }
+        } else {
+          console.log(chalk.red('❌ Could not extract JID from error context'));
         }
-        return;
+        
+        return; // Don't process this message further
       }
       
-      // Log other errors
-      console.error(chalk.red('❌ Error in message handler:', error.message));
+      // Log other errors with more context
+      console.error(chalk.red('❌ Error in message handler:'));
+      console.error(chalk.red(`   Error: ${errorMessage}`));
+      if (chatUpdate.messages && chatUpdate.messages.length > 0) {
+        const message = chatUpdate.messages[0];
+        console.error(chalk.red(`   Message from: ${message.key?.remoteJid || 'unknown'}`));
+        console.error(chalk.red(`   Message ID: ${message.key?.id || 'unknown'}`));
+      }
     }
   };
   

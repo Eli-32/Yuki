@@ -5,11 +5,11 @@ import { getPhoneNumber, normalizeJid } from '../lib/simple-jid.js';
 // Removed: connectDB and mongoose.connect logic. Assume connection is handled globally.
 
 mongoose.connection.on('disconnected', () => {
-  // console.log('⚠️ MongoDB disconnected!');
+  console.log('⚠️ MongoDB disconnected!');
 });
 
 mongoose.connection.on('reconnected', () => {
-  // console.log('🔁 MongoDB reconnected');
+  console.log('🔁 MongoDB reconnected');
 });
 
 // Core functionality
@@ -23,6 +23,7 @@ const validateAdmin = async (ctx) => {
     });
     return isAdmin;
   } catch (error) {
+    console.error('Admin validation error:', error);
     return false;
   }
 };
@@ -35,16 +36,23 @@ const validateBotAdmin = async (ctx) => {
       participant => participant.id === botJid && (participant.admin === 'admin' || participant.admin === 'superadmin')
     );
   } catch (error) {
+    console.error('Bot admin validation error:', error);
     return false;
   }
 };
 
 const resolveTargetUser = (ctx) => {
   try {
+    console.log('Resolving target user...');
+    console.log('Quoted message:', ctx.quoted);
+    console.log('Mentioned JIDs:', ctx.mentionedJid);
+    
     // Check for quoted message first
     if (ctx.quoted && ctx.quoted.sender) {
+      console.log('Found quoted sender:', ctx.quoted.sender);
       const normalizedJid = normalizeJid(ctx.quoted.sender);
       const cleanId = getPhoneNumber(ctx.quoted.sender);
+      console.log('Resolved from quote - JID:', normalizedJid, 'ID:', cleanId);
       return {
         id: cleanId,
         jid: normalizedJid,
@@ -54,8 +62,10 @@ const resolveTargetUser = (ctx) => {
 
     // Check for mentioned users
     if (ctx.mentionedJid?.length > 0) {
+      console.log('Found mentioned user:', ctx.mentionedJid[0]);
       const normalizedJid = normalizeJid(ctx.mentionedJid[0]);
       const cleanId = getPhoneNumber(ctx.mentionedJid[0]);
+      console.log('Resolved from mention - JID:', normalizedJid, 'ID:', cleanId);
       return {
         id: cleanId,
         jid: normalizedJid,
@@ -63,22 +73,34 @@ const resolveTargetUser = (ctx) => {
       };
     }
 
+    console.log('No target user found');
     return null;
   } catch (error) {
+    console.error('Error resolving target user:', error);
     return null;
   }
 };
 
 async function handleAddWarning(ctx, reason) {
   try {
+    console.log('Starting warning process...');
+    
+    // Check database connection
+    if (mongoose.connection.readyState !== 1) {
+      console.error('Database not connected, state:', mongoose.connection.readyState);
+      return ctx.reply('❌ خطأ في الاتصال بقاعدة البيانات');
+    }
+
     // Admin validation
     const isAdmin = await validateAdmin(ctx);
+    console.log('Admin check result:', isAdmin);
     if (!isAdmin) {
       return ctx.reply('⚠️ تحتاج صلاحيات المشرفين لهذا الأمر');
     }
 
     // User resolution
     const targetUser = resolveTargetUser(ctx);
+    console.log('Target user resolved:', targetUser);
     if (!targetUser) {
       return ctx.reply('⚠️ يرجى تحديد مستخدم عن طريق الرد أو المنشن');
     }
@@ -88,7 +110,16 @@ async function handleAddWarning(ctx, reason) {
       return ctx.reply('⚠️ لا يمكنك إنذار نفسك');
     }
 
-    // Database operation
+    // Validate required fields
+    if (!targetUser.id || !ctx.chat) {
+      console.error('Missing required fields - targetUser.id:', targetUser.id, 'ctx.chat:', ctx.chat);
+      return ctx.reply('❌ خطأ في البيانات المطلوبة');
+    }
+
+    console.log('Attempting database operation...');
+    console.log('User ID:', targetUser.id, 'Group ID:', ctx.chat);
+
+    // Database operation with better error handling
     const userWarnings = await WarningModel.findOneAndUpdate(
       { userId: targetUser.id, groupId: ctx.chat },
       {
@@ -101,14 +132,19 @@ async function handleAddWarning(ctx, reason) {
         }
       },
       { new: true, upsert: true }
-    );
+    ).catch(dbError => {
+      console.error('Database operation failed:', dbError);
+      throw new Error(`Database error: ${dbError.message}`);
+    });
+
+    console.log('Database operation successful, warnings count:', userWarnings.warnings.length);
 
     // Send notification
     const warningCount = userWarnings.warnings.length;
     const lastWarning = userWarnings.warnings[warningCount - 1];
     
     await ctx.conn.sendMessage(ctx.chat, {
-      conversation: `🔔 *إنذار لـ ${targetUser.mention}*\n\n📊 العدد: ${warningCount}/5\n📝 السبب: ${lastWarning.cause}\n🕒 التاريخ: ${new Date(lastWarning.date).toLocaleString('ar-EG')}\n🚨 تحذير: عند الوصول لـ 5 إنذارات سيتم الطرد`
+      text: `🔔 *إنذار لـ ${targetUser.mention}*\n\n📊 العدد: ${warningCount}/5\n📝 السبب: ${lastWarning.cause}\n🕒 التاريخ: ${new Date(lastWarning.date).toLocaleString('ar-EG')}\n🚨 تحذير: عند الوصول لـ 5 إنذارات سيتم الطرد`
     }, {
       mentions: [targetUser.jid]
     });
@@ -118,6 +154,7 @@ async function handleAddWarning(ctx, reason) {
       try {
         const isBotAdmin = await validateBotAdmin(ctx);
         if (isBotAdmin) {
+          console.log('Attempting to remove user:', targetUser.jid);
           // Correct Baileys removal method
           await ctx.conn.groupParticipantsUpdate(
             ctx.chat,
@@ -126,7 +163,7 @@ async function handleAddWarning(ctx, reason) {
           );
           
           await ctx.conn.sendMessage(ctx.chat, {
-            conversation: `تم طرد ${targetUser.mention} لتجاوز الحد الأقصى للإنذارات (5/5)`
+            text: `تم طرد ${targetUser.mention} لتجاوز الحد الأقصى للإنذارات (5/5)`
           }, {
             mentions: [targetUser.jid]
           });
@@ -138,31 +175,42 @@ async function handleAddWarning(ctx, reason) {
           });
         } else {
           await ctx.conn.sendMessage(ctx.chat, {
-            conversation: '⚠️ البوت يحتاج صلاحيات إدارية للطرد التلقائي'
+            text: '⚠️ البوت يحتاج صلاحيات إدارية للطرد التلقائي'
           });
         }
       } catch (removeError) {
-        // console.error('Removal failed:', removeError);
+        console.error('Removal failed:', removeError);
         await ctx.reply('❌ فشل طرد العضو - تأكد من صلاحيات البوت');
       }
     }
   } catch (error) {
-    // console.error('[FULL ERROR]', error);
-    await ctx.reply('❌ فشل إضافة الإنذار - الرجاء التحقق من السجلات');
+    console.error('[FULL ERROR] handleAddWarning:', error);
+    console.error('Error stack:', error.stack);
+    await ctx.reply(`❌ فشل إضافة الإنذار: ${error.message}`);
   }
 }
 
 async function handleViewWarnings(ctx, targetUserId) {
   try {
+    console.log('Viewing warnings for user:', targetUserId);
     
+    // Check database connection
+    if (mongoose.connection.readyState !== 1) {
+      console.error('Database not connected');
+      return ctx.reply('❌ خطأ في الاتصال بقاعدة البيانات');
+    }
+
     const warnings = await WarningModel.findOne({
       userId: targetUserId,
       groupId: ctx.chat
+    }).catch(dbError => {
+      console.error('Database query failed:', dbError);
+      throw new Error(`Database error: ${dbError.message}`);
     });
 
     if (!warnings?.warnings?.length) {
       return ctx.conn.sendMessage(ctx.chat, {
-        conversation: '✔️ لا يوجد إنذارات مسجلة لهذا المستخدم'
+        text: '✔️ لا يوجد إنذارات مسجلة لهذا المستخدم'
       }, {
         mentions: [ctx.sender]
       });
@@ -174,7 +222,7 @@ async function handleViewWarnings(ctx, targetUserId) {
     warnings.warnings.forEach((warn, index) => {
       message += `${index + 1}. ⚠️ ${warn.cause}\n`;
       message += `   📅 ${new Date(warn.date).toLocaleString('ar-EG')}\n`;
-      message += `   👤 بواسطة: @${getPhoneNumber(ctx.sender)}\n\n`;
+      message += `   👤 بواسطة: @${getPhoneNumber(warn.issuer)}\n\n`;
     });
     
     message += '╰────────────────╯';
@@ -184,19 +232,25 @@ async function handleViewWarnings(ctx, targetUserId) {
     const uniqueIssuers = [...new Set(issuers)];
 
     await ctx.conn.sendMessage(ctx.chat, {
-      conversation: message
+      text: message
     }, {
       mentions: uniqueIssuers
     });
   } catch (error) {
-    // console.error('Display warnings error:', error);
-    await ctx.reply('❌ فشل عرض الإنذارات');
+    console.error('Display warnings error:', error);
+    await ctx.reply(`❌ فشل عرض الإنذارات: ${error.message}`);
   }
 }
 
 async function handleDeleteOneWarning(ctx) {
   try {
+    console.log('Deleting one warning...');
     
+    // Check database connection
+    if (mongoose.connection.readyState !== 1) {
+      return ctx.reply('❌ خطأ في الاتصال بقاعدة البيانات');
+    }
+
     // Admin validation
     const isAdmin = await validateAdmin(ctx);
     if (!isAdmin) {
@@ -213,6 +267,9 @@ async function handleDeleteOneWarning(ctx) {
     const userWarnings = await WarningModel.findOne({
       userId: targetUser.id,
       groupId: ctx.chat
+    }).catch(dbError => {
+      console.error('Database query failed:', dbError);
+      throw new Error(`Database error: ${dbError.message}`);
     });
 
     if (!userWarnings?.warnings?.length) {
@@ -234,19 +291,26 @@ async function handleDeleteOneWarning(ctx) {
     }
 
     await ctx.conn.sendMessage(ctx.chat, {
-      text: `✅ تم حذف آخر إنذار من ${targetUser.mention}\n📊 الإنذارات المتبقية: ${remainingCount}/5`,
+      text: `✅ تم حذف آخر إنذار من ${targetUser.mention}\n📊 الإنذارات المتبقية: ${remainingCount}/5`
+    }, {
       mentions: [targetUser.jid]
     });
 
   } catch (error) {
-    // console.error('Delete one warning error:', error);
-    await ctx.reply('❌ فشل حذف الإنذار');
+    console.error('Delete one warning error:', error);
+    await ctx.reply(`❌ فشل حذف الإنذار: ${error.message}`);
   }
 }
 
 async function handleClearAllWarnings(ctx) {
   try {
+    console.log('Clearing all warnings...');
     
+    // Check database connection
+    if (mongoose.connection.readyState !== 1) {
+      return ctx.reply('❌ خطأ في الاتصال بقاعدة البيانات');
+    }
+
     // Admin validation
     const isAdmin = await validateAdmin(ctx);
     if (!isAdmin) {
@@ -263,6 +327,9 @@ async function handleClearAllWarnings(ctx) {
     const result = await WarningModel.deleteOne({
       userId: targetUser.id,
       groupId: ctx.chat
+    }).catch(dbError => {
+      console.error('Database deletion failed:', dbError);
+      throw new Error(`Database error: ${dbError.message}`);
     });
 
     if (result.deletedCount === 0) {
@@ -270,19 +337,30 @@ async function handleClearAllWarnings(ctx) {
     }
 
     await ctx.conn.sendMessage(ctx.chat, {
-      text: `✅ تم حذف جميع إنذارات ${targetUser.mention}`,
+      text: `✅ تم حذف جميع إنذارات ${targetUser.mention}`
+    }, {
       mentions: [targetUser.jid]
     });
 
   } catch (error) {
-    // console.error('Clear all warnings error:', error);
-    await ctx.reply('❌ فشل حذف الإنذارات');
+    console.error('Clear all warnings error:', error);
+    await ctx.reply(`❌ فشل حذف الإنذارات: ${error.message}`);
   }
 }
 
 // Command router
 export const warningHandler = async (ctx, { command }) => {
   try {
+    console.log('Warning handler called with command:', command);
+    console.log('Context details:', {
+      isGroup: ctx.isGroup,
+      sender: ctx.sender,
+      chat: ctx.chat,
+      text: ctx.text,
+      quoted: !!ctx.quoted,
+      mentionedJid: ctx.mentionedJid
+    });
+
     if (!ctx.isGroup) {
       return ctx.reply('🚫 هذا الأمر يعمل فقط في المجموعات');
     }
@@ -295,9 +373,16 @@ export const warningHandler = async (ctx, { command }) => {
         
         ctx.reply(`🧪 Test Results:
 Admin: ${testAdmin}
-Target User: ${testUser ? testUser.jid : 'None'}
+Target User: ${testUser ? JSON.stringify(testUser) : 'None'}
 Is Group: ${ctx.isGroup}
-Command: ${command}`);
+Command: ${command}
+DB State: ${mongoose.connection.readyState}
+Context: ${JSON.stringify({
+  sender: ctx.sender,
+  chat: ctx.chat,
+  quoted: !!ctx.quoted,
+  mentionedJid: ctx.mentionedJid?.length || 0
+})}`);
         break;
         
       case 'انذار':
@@ -305,6 +390,7 @@ Command: ${command}`);
         const fullText = ctx.text || '';
         const textParts = fullText.split(' ');
         const reason = textParts.slice(1).join(' ').trim();
+        console.log('Warning reason:', reason);
         await handleAddWarning(ctx, reason);
         break;
         
@@ -335,8 +421,9 @@ Command: ${command}`);
         ctx.reply('⚠️ أمر غير معروف');
     }
   } catch (error) {
-    // console.error('Command handler error:', error);
-    await ctx.reply('❌ حدث خطأ غير متوقع');
+    console.error('Command handler error:', error);
+    console.error('Error stack:', error.stack);
+    await ctx.reply(`❌ حدث خطأ غير متوقع: ${error.message}`);
   }
 };
 

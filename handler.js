@@ -101,7 +101,7 @@ export async function handler(chatUpdate) {
         return;
     }
     
-    // Handle encryption errors
+    // Enhanced encryption error handling
     try {
         if (chatUpdate.messages && chatUpdate.messages.length > 0) {
             for (const message of chatUpdate.messages) {
@@ -111,19 +111,35 @@ export async function handler(chatUpdate) {
                         // Handle protocol message errors
                         continue;
                     }
+                    
+                    // Pre-validate message integrity
+                    if (!message.message || Object.keys(message.message).length === 0) {
+                        console.log(chalk.yellow(`⚠️ Empty message detected from ${message.key.remoteJid}`));
+                        continue;
+                    }
                 }
             }
         }
     } catch (error) {
-        // Handle encryption errors silently
-        if (error.message && (error.message.includes('No SenderKeyRecord found for decryption') || 
-                             error.message.includes('Invalid PreKey ID') ||
-                             error.message.includes('Bad MAC') ||
-                             error.message.includes('No matching sessions found'))) {
-            console.log(chalk.yellow('🔐 Encryption error detected, attempting recovery...'));
-            // The encryption manager will handle this in the main connection
-            return;
+        // Enhanced encryption error handling
+        const errorMessage = error.message || error.toString();
+        
+        if (errorMessage.includes('No SenderKeyRecord found for decryption') ||
+            errorMessage.includes('Invalid PreKey ID') ||
+            errorMessage.includes('Bad MAC') ||
+            errorMessage.includes('No matching sessions found') ||
+            errorMessage.includes('Failed to decrypt message') ||
+            errorMessage.includes('Session error')) {
+            
+            console.log(chalk.yellow('🔐 Encryption error detected in handler, delegating to main handler...'));
+            console.log(chalk.yellow(`🔍 Handler error: ${errorMessage}`));
+            
+            // Let the main handler deal with this
+            throw error; // Re-throw to be caught by main handler
         }
+        
+        // Log other errors
+        console.error(chalk.red('❌ Handler error:', errorMessage));
     }
     
     this.pushMessage(chatUpdate.messages).catch(console.error);

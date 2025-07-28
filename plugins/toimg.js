@@ -1,5 +1,9 @@
-import { webp2png } from '../lib/webp2mp4.js'
 import fetch from 'node-fetch'
+import fs from 'fs'
+import path from 'path'
+import { spawn } from 'child_process'
+import { FormData, Blob } from 'formdata-node'
+import { JSDOM } from 'jsdom'
 
 let handler = async (m, { conn, usedPrefix, command }) => {
   const notStickerMessage = `✳️ Reply to a sticker with :\n\n *${usedPrefix + command}*`
@@ -12,24 +16,76 @@ let handler = async (m, { conn, usedPrefix, command }) => {
   
   try {
     let media = await q.download()
-    let imageUrl = await webp2png(media).catch(_ => null)
     
-    if (!imageUrl) {
-      throw new Error('Failed to convert sticker to image')
+    // Create temp directory if it doesn't exist
+    const tmpDir = path.join(process.cwd(), 'tmp')
+    if (!fs.existsSync(tmpDir)) {
+      fs.mkdirSync(tmpDir, { recursive: true })
     }
     
-    // Download the actual image data from the URL
-    const response = await fetch(imageUrl)
-    if (!response.ok) {
-      throw new Error(`Failed to download image: ${response.status}`)
-    }
+    // Save webp to temp file
+    const webpFile = path.join(tmpDir, `sticker_${Date.now()}.webp`)
+    const pngFile = path.join(tmpDir, `image_${Date.now()}.png`)
     
-    const imageBuffer = await response.buffer()
+    fs.writeFileSync(webpFile, media)
     
+    // Convert using ffmpeg with high quality settings
+    await new Promise((resolve, reject) => {
+      const ffmpeg = spawn('ffmpeg', [
+        '-i', webpFile,
+        '-vf', 'scale=512:512:flags=lanczos',
+        '-q:v', '1', // High quality
+        '-compression_level', '0', // No compression
+        pngFile
+      ])
+      
+      ffmpeg.on('error', reject)
+      ffmpeg.on('close', (code) => {
+        if (code === 0) {
+          resolve()
+        } else {
+          reject(new Error(`FFmpeg exited with code ${code}`))
+        }
+      })
+    })
+    
+    // Read the converted image
+    const imageBuffer = fs.readFileSync(pngFile)
+    
+    // Send the high quality image
     await conn.sendFile(m.chat, imageBuffer, 'sticker-to-image.png', '*✅ تم تحويل الملصق إلى صورة بنجاح!*', m)
+    
+    // Clean up temp files
+    try {
+      fs.unlinkSync(webpFile)
+      fs.unlinkSync(pngFile)
+    } catch (cleanupError) {
+      // Silent cleanup
+    }
+    
   } catch (error) {
     console.error('ToImg Error:', error)
-    await m.reply('❌ حدث خطأ أثناء تحويل الملصق إلى صورة.')
+    
+    // Fallback to original method if ffmpeg fails
+    try {
+      let media = await q.download()
+      let imageUrl = await webp2png(media).catch(_ => null)
+      
+      if (!imageUrl) {
+        throw new Error('Failed to convert sticker to image')
+      }
+      
+      const response = await fetch(imageUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to download image: ${response.status}`)
+      }
+      
+      const imageBuffer = await response.buffer()
+      await conn.sendFile(m.chat, imageBuffer, 'sticker-to-image.png', '*✅ تم تحويل الملصق إلى صورة بنجاح!*', m)
+    } catch (fallbackError) {
+      console.error('Fallback ToImg Error:', fallbackError)
+      await m.reply('❌ حدث خطأ أثناء تحويل الملصق إلى صورة.')
+    }
   }
 }
 
@@ -38,3 +94,31 @@ handler.tags = ['sticker']
 handler.command = ['لصورة', 'toimg']
 
 export default handler
+
+// Keep the original webp2png function as fallback
+async function webp2png(source) {
+  let form = new FormData()
+  let isUrl = typeof source === 'string' && /https?:\/\//.test(source)
+  const blob = !isUrl && new Blob([source.toArrayBuffer()])
+  form.append('new-image-url', isUrl ? blob : '')
+  form.append('new-image', isUrl ? '' : blob, 'image.webp')
+  let res = await fetch('https://ezgif.com/webp-to-png', {
+    method: 'POST',
+    body: form,
+  })
+  let html = await res.text()
+  let { document } = new JSDOM(html).window
+  let form2 = new FormData()
+  let obj = {}
+  for (let input of document.querySelectorAll('form input[name]')) {
+    obj[input.name] = input.value
+    form2.append(input.name, input.value)
+  }
+  let res2 = await fetch('https://ezgif.com/webp-to-png/' + obj.file, {
+    method: 'POST',
+    body: form2,
+  })
+  let html2 = await res2.text()
+  let { document: document2 } = new JSDOM(html2).window
+  return new URL(document2.querySelector('div#output > p.outfile > img').src, res2.url).toString()
+}

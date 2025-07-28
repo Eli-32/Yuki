@@ -105,7 +105,7 @@ const isUrl = (text) => {
   return /https?:\/\/\S+\.(jpg|jpeg|png|gif)/i.test(text);
 };
 
-async function createSticker(img, url, packName, authorName, animated = false, quality = 10) {
+async function createSticker(img, url, packName, authorName, animated = false, quality = 20) {
   try {
     let stickerMetadata = { 
       type: animated ? 'full' : 'default', 

@@ -18,48 +18,56 @@ let handler = async (m, { conn }) => {
     let out = Buffer.alloc(0)
     
     if (/webp/.test(mime)) {
-      // Use local ffmpeg for high quality conversion
-      const tmpDir = path.join(process.cwd(), 'tmp')
-      if (!fs.existsSync(tmpDir)) {
-        fs.mkdirSync(tmpDir, { recursive: true })
-      }
+      // Check if ffmpeg is available
+      const ffmpegAvailable = await checkFfmpeg()
       
-      const webpFile = path.join(tmpDir, `sticker_${Date.now()}.webp`)
-      const mp4File = path.join(tmpDir, `video_${Date.now()}.mp4`)
-      
-      fs.writeFileSync(webpFile, media)
-      
-      // Convert using ffmpeg with high quality settings
-      await new Promise((resolve, reject) => {
-        const ffmpegProcess = spawn('ffmpeg', [
-          '-i', webpFile,
-          '-vf', 'scale=512:512:flags=lanczos',
-          '-c:v', 'libx264',
-          '-preset', 'slow', // Better quality
-          '-crf', '18', // High quality (lower = better)
-          '-pix_fmt', 'yuv420p',
-          '-movflags', '+faststart',
-          mp4File
-        ])
+      if (ffmpegAvailable) {
+        // Use local ffmpeg for high quality conversion
+        const tmpDir = path.join(process.cwd(), 'tmp')
+        if (!fs.existsSync(tmpDir)) {
+          fs.mkdirSync(tmpDir, { recursive: true })
+        }
         
-        ffmpegProcess.on('error', reject)
-        ffmpegProcess.on('close', (code) => {
-          if (code === 0) {
-            resolve()
-          } else {
-            reject(new Error(`FFmpeg exited with code ${code}`))
-          }
+        const webpFile = path.join(tmpDir, `sticker_${Date.now()}.webp`)
+        const mp4File = path.join(tmpDir, `video_${Date.now()}.mp4`)
+        
+        fs.writeFileSync(webpFile, media)
+        
+        // Convert using ffmpeg with high quality settings
+        await new Promise((resolve, reject) => {
+          const ffmpegProcess = spawn('ffmpeg', [
+            '-i', webpFile,
+            '-vf', 'scale=512:512:flags=lanczos',
+            '-c:v', 'libx264',
+            '-preset', 'slow', // Better quality
+            '-crf', '18', // High quality (lower = better)
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            mp4File
+          ])
+          
+          ffmpegProcess.on('error', reject)
+          ffmpegProcess.on('close', (code) => {
+            if (code === 0) {
+              resolve()
+            } else {
+              reject(new Error(`FFmpeg exited with code ${code}`))
+            }
+          })
         })
-      })
-      
-      out = fs.readFileSync(mp4File)
-      
-      // Clean up temp files
-      try {
-        fs.unlinkSync(webpFile)
-        fs.unlinkSync(mp4File)
-      } catch (cleanupError) {
-        // Silent cleanup
+        
+        out = fs.readFileSync(mp4File)
+        
+        // Clean up temp files
+        try {
+          fs.unlinkSync(webpFile)
+          fs.unlinkSync(mp4File)
+        } catch (cleanupError) {
+          // Silent cleanup
+        }
+      } else {
+        // Use fallback method if ffmpeg is not available
+        out = await webp2mp4(media)
       }
       
     } else if (/audio/.test(mime)) {
@@ -118,6 +126,15 @@ let handler = async (m, { conn }) => {
       await m.reply('❌ حدث خطأ أثناء تحويل الملصق إلى فيديو.')
     }
   }
+}
+
+// Function to check if ffmpeg is available
+async function checkFfmpeg() {
+  return new Promise((resolve) => {
+    const ffmpeg = spawn('ffmpeg', ['-version'])
+    ffmpeg.on('error', () => resolve(false))
+    ffmpeg.on('close', (code) => resolve(code === 0))
+  })
 }
 
 handler.help = ['tovid']

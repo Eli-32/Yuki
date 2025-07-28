@@ -17,56 +17,75 @@ let handler = async (m, { conn, usedPrefix, command }) => {
   try {
     let media = await q.download()
     
-    // Create temp directory if it doesn't exist
-    const tmpDir = path.join(process.cwd(), 'tmp')
-    if (!fs.existsSync(tmpDir)) {
-      fs.mkdirSync(tmpDir, { recursive: true })
-    }
+    // Check if ffmpeg is available
+    const ffmpegAvailable = await checkFfmpeg()
     
-    // Save webp to temp file
-    const webpFile = path.join(tmpDir, `sticker_${Date.now()}.webp`)
-    const pngFile = path.join(tmpDir, `image_${Date.now()}.png`)
-    
-    fs.writeFileSync(webpFile, media)
-    
-    // Convert using ffmpeg with high quality settings
-    await new Promise((resolve, reject) => {
-      const ffmpeg = spawn('ffmpeg', [
-        '-i', webpFile,
-        '-vf', 'scale=512:512:flags=lanczos',
-        '-q:v', '1', // High quality
-        '-compression_level', '0', // No compression
-        pngFile
-      ])
+    if (ffmpegAvailable) {
+      // Use local ffmpeg for high quality conversion
+      const tmpDir = path.join(process.cwd(), 'tmp')
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true })
+      }
       
-      ffmpeg.on('error', reject)
-      ffmpeg.on('close', (code) => {
-        if (code === 0) {
-          resolve()
-        } else {
-          reject(new Error(`FFmpeg exited with code ${code}`))
-        }
+      const webpFile = path.join(tmpDir, `sticker_${Date.now()}.webp`)
+      const pngFile = path.join(tmpDir, `image_${Date.now()}.png`)
+      
+      fs.writeFileSync(webpFile, media)
+      
+      // Convert using ffmpeg with high quality settings
+      await new Promise((resolve, reject) => {
+        const ffmpeg = spawn('ffmpeg', [
+          '-i', webpFile,
+          '-vf', 'scale=512:512:flags=lanczos',
+          '-q:v', '1', // High quality
+          '-compression_level', '0', // No compression
+          pngFile
+        ])
+        
+        ffmpeg.on('error', reject)
+        ffmpeg.on('close', (code) => {
+          if (code === 0) {
+            resolve()
+          } else {
+            reject(new Error(`FFmpeg exited with code ${code}`))
+          }
+        })
       })
-    })
-    
-    // Read the converted image
-    const imageBuffer = fs.readFileSync(pngFile)
-    
-    // Send the high quality image
-    await conn.sendFile(m.chat, imageBuffer, 'sticker-to-image.png', '*✅ تم تحويل الملصق إلى صورة بنجاح!*', m)
-    
-    // Clean up temp files
-    try {
-      fs.unlinkSync(webpFile)
-      fs.unlinkSync(pngFile)
-    } catch (cleanupError) {
-      // Silent cleanup
+      
+      // Read the converted image
+      const imageBuffer = fs.readFileSync(pngFile)
+      
+      // Send the high quality image
+      await conn.sendFile(m.chat, imageBuffer, 'sticker-to-image.png', '*✅ تم تحويل الملصق إلى صورة بنجاح!*', m)
+      
+      // Clean up temp files
+      try {
+        fs.unlinkSync(webpFile)
+        fs.unlinkSync(pngFile)
+      } catch (cleanupError) {
+        // Silent cleanup
+      }
+    } else {
+      // Use fallback method if ffmpeg is not available
+      let imageUrl = await webp2png(media).catch(_ => null)
+      
+      if (!imageUrl) {
+        throw new Error('Failed to convert sticker to image')
+      }
+      
+      const response = await fetch(imageUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to download image: ${response.status}`)
+      }
+      
+      const imageBuffer = await response.buffer()
+      await conn.sendFile(m.chat, imageBuffer, 'sticker-to-image.png', '*✅ تم تحويل الملصق إلى صورة بنجاح!*', m)
     }
     
   } catch (error) {
     console.error('ToImg Error:', error)
     
-    // Fallback to original method if ffmpeg fails
+    // Final fallback to original method
     try {
       let media = await q.download()
       let imageUrl = await webp2png(media).catch(_ => null)
@@ -87,6 +106,15 @@ let handler = async (m, { conn, usedPrefix, command }) => {
       await m.reply('❌ حدث خطأ أثناء تحويل الملصق إلى صورة.')
     }
   }
+}
+
+// Function to check if ffmpeg is available
+async function checkFfmpeg() {
+  return new Promise((resolve) => {
+    const ffmpeg = spawn('ffmpeg', ['-version'])
+    ffmpeg.on('error', () => resolve(false))
+    ffmpeg.on('close', (code) => resolve(code === 0))
+  })
 }
 
 handler.help = ['toimg <sticker>']

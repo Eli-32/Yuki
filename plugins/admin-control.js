@@ -1,7 +1,8 @@
 // WhatsApp Admin Monitor Plugin
 // Pure monitoring - watches for unauthorized admin changes and punishes them
+// FIXED: Proper bot, owner, and group creator protection
 
-import { jidDecode } from '@whiskeysockets/baileys';
+import { jidDecode, areJidsSameUser } from 'baileys-pro';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 dotenv.config({ path: './.env' });
@@ -54,17 +55,159 @@ function initializeAdminMonitor(sock) {
     };
 }
 
+// Helper function to normalize JID formats for comparison
+function normalizeJid(jid) {
+    if (!jid) return null;
+    
+    // Extract just the number part from different JID formats
+    const numberMatch = jid.match(/(\d+)/);
+    if (!numberMatch) return jid;
+    
+    const number = numberMatch[1];
+    
+    // Return both @lid and @s.whatsapp.net variations
+    return {
+        number: number,
+        lid: number + '@lid',
+        whatsapp: number + '@s.whatsapp.net',
+        original: jid
+    };
+}
+
+// Helper function to check if a JID is authorized (bot, owner, or group creator)
+function isAuthorizedJID(jid, sock, groupCreator) {
+    console.log('🔍 Checking authorization for JID:', jid);
+    
+    // Normalize the JID we're checking
+    const normalizedJid = normalizeJid(jid);
+    const normalizedBot = normalizeJid(sock.user.id);
+    const normalizedCreator = groupCreator ? normalizeJid(groupCreator) : null;
+    
+    console.log('🔍 Normalized JIDs:', {
+        checking: normalizedJid,
+        bot: normalizedBot,
+        creator: normalizedCreator
+    });
+    
+    // Method 1: Check if it's the bot using areJidsSameUser
+    let isBot = areJidsSameUser(jid, sock.user.id);
+    
+    // Method 1.1: Check if it's the bot by number comparison
+    if (!isBot && normalizedJid && normalizedBot) {
+        isBot = normalizedJid.number === normalizedBot.number;
+        console.log('🔢 Bot number match:', isBot, `(${normalizedJid.number} === ${normalizedBot.number})`);
+    }
+    
+    // Method 1.2: Direct check for the specific bot JID
+    if (!isBot && jid === '160598054666324@lid') {
+        isBot = true;
+        console.log('🔢 Direct bot JID match: 160598054666324@lid');
+    }
+    
+    // Method 1.3: Check if the JID is the bot by comparing the number part
+    if (!isBot && normalizedJid && normalizedJid.number === '160598054666324') {
+        isBot = true;
+        console.log('🔢 Bot number match: 160598054666324');
+    }
+    
+    console.log('📱 Is Bot (areJidsSameUser + number + direct):', isBot);
+    
+    // Method 2: Check if it's the group creator
+    let isGroupCreator = groupCreator && areJidsSameUser(jid, groupCreator);
+    
+    // Method 2.1: Check if it's the group creator by number comparison
+    if (!isGroupCreator && normalizedJid && normalizedCreator) {
+        isGroupCreator = normalizedJid.number === normalizedCreator.number;
+        console.log('🔢 Creator number match:', isGroupCreator, `(${normalizedJid.number} === ${normalizedCreator.number})`);
+    }
+    
+    console.log('👑 Is Group Creator:', isGroupCreator);
+    
+    // Method 3: Check if it's a bot owner
+    let isBotOwner = false;
+    if (global.owner && Array.isArray(global.owner)) {
+        const ownerNumbers = global.owner.map(([number]) => number.replace(/[^0-9]/g, ''));
+        
+        // Check by number comparison
+        if (normalizedJid) {
+            isBotOwner = ownerNumbers.includes(normalizedJid.number);
+        }
+        
+        // Also check using areJidsSameUser with different formats
+        if (!isBotOwner) {
+            const ownerJids = ownerNumbers.map(num => [
+                num + '@s.whatsapp.net',
+                num + '@lid'
+            ]).flat();
+            
+            isBotOwner = ownerJids.some(ownerJid => areJidsSameUser(jid, ownerJid));
+        }
+        
+        console.log('🔧 Owner Numbers:', ownerNumbers);
+        console.log('👥 Is Bot Owner:', isBotOwner);
+    }
+    
+    // Method 4: Additional bot JID variations check
+    const botJidVariations = [
+        sock.user.id,
+        sock.decodeJid(sock.user.id),
+        '160598054666324@lid', // Add the specific bot JID
+        '160598054666324@s.whatsapp.net' // Add the @s.whatsapp.net version
+    ];
+    
+    // Add number-based variations
+    if (normalizedBot) {
+        botJidVariations.push(
+            normalizedBot.lid,
+            normalizedBot.whatsapp,
+            normalizedBot.number + '@s.whatsapp.net',
+            normalizedBot.number + '@lid'
+        );
+    }
+    
+    const isBotVariation = botJidVariations.some(botJid => {
+        const match = areJidsSameUser(jid, botJid);
+        console.log(`🤖 Checking bot variation ${botJid} vs ${jid}:`, match);
+        return match;
+    });
+    
+    // Additional check: if the JID number matches the bot number
+    if (!isBotVariation && normalizedJid && normalizedJid.number === '160598054666324') {
+        console.log('🔢 Bot variation by number match: 160598054666324');
+        isBotVariation = true;
+    }
+    
+    const authorized = isBot || isGroupCreator || isBotOwner || isBotVariation;
+    
+    console.log('✅ Final Authorization Result:', {
+        jid,
+        isBot,
+        isGroupCreator,
+        isBotOwner,
+        isBotVariation,
+        authorized
+    });
+    
+    return authorized;
+}
+
 async function monitorAdminChanges(sock, update) {
     try {
-        console.log('Group participants update received:', update);
+        console.log('📨 Group participants update received:', update);
         
         const { id: groupId, participants, action, author } = update;
         
         // Only monitor promote/demote actions
-        if (action !== 'promote' && action !== 'demote') return;
+        if (action !== 'promote' && action !== 'demote') {
+            console.log('⏭️ Skipping - not promote/demote action');
+            return;
+        }
         
         // Skip if no author (WhatsApp system actions)
-        if (!author) return;
+        if (!author) {
+            console.log('⏭️ Skipping - no author (system action)');
+            return;
+        }
         
         // CRITICAL FIX: Skip if this is a bot-initiated punishment
         // Check if any of the participants were recently processed to avoid infinite loops
@@ -72,7 +215,7 @@ async function monitorAdminChanges(sock, update) {
         const recentPunishmentKey = `${groupId}-${participants.join(',')}-${action}`;
         if (adminMonitor.recentPunishments && adminMonitor.recentPunishments[recentPunishmentKey]) {
             const timeSince = now - adminMonitor.recentPunishments[recentPunishmentKey];
-            if (timeSince < 5000) { // Skip if within 5 seconds
+            if (timeSince < 10000) { // Skip if within 10 seconds (increased from 5)
                 console.log('🔄 Skipping - recent bot punishment detected');
                 return;
             }
@@ -82,34 +225,20 @@ async function monitorAdminChanges(sock, update) {
         const groupMetadata = await sock.groupMetadata(groupId);
         const creator = groupMetadata.owner;
         
-        // Handle different JID formats (@lid vs @s.whatsapp.net)
-        const botJid = sock.user.id; // Full bot JID (e.g., "1234567890:27@s.whatsapp.net")
-        const botNumber = botJid.split(':')[0]; // Just the number part
-        
-        console.log('DEBUG - Author:', author);
-        console.log('DEBUG - Bot JID:', botJid);
-        console.log('DEBUG - Bot Number:', botNumber);
-        console.log('DEBUG - Creator:', creator);
-        
-        // Check if author is authorized (handle both @lid and @s.whatsapp.net formats)
-        const authorNumber = author.split('@')[0];
-        const creatorNumber = creator ? creator.split('@')[0] : null;
-        
-        const authorIsBot = authorNumber === botNumber;
-        const authorIsGroupCreator = creatorNumber && authorNumber === creatorNumber;
-        const authorIsBotCreator = global.owner.some(ownerArray => {
-            return authorNumber === ownerArray[0];
+        console.log('📋 Group Info:', {
+            groupId,
+            creator,
+            author,
+            action,
+            participants,
+            botJid: sock.user.id
         });
         
-        console.log('DEBUG - Author number:', authorNumber);
-        console.log('DEBUG - Bot number:', botNumber);
-        console.log('DEBUG - Creator number:', creatorNumber);
-        console.log('DEBUG - Author is bot:', authorIsBot);
-        console.log('DEBUG - Author is group creator:', authorIsGroupCreator);
-        console.log('DEBUG - Author is bot creator:', authorIsBotCreator);
+        // Check if author is authorized using our helper function
+        const authorIsAuthorized = isAuthorizedJID(author, sock, creator);
         
         // If authorized, allow the action
-        if (authorIsBot || authorIsGroupCreator || authorIsBotCreator) {
+        if (authorIsAuthorized) {
             console.log('✅ Authorized action - allowing');
             return;
         }
@@ -119,38 +248,56 @@ async function monitorAdminChanges(sock, update) {
         console.log('🚨 UNAUTHORIZED ACTION DETECTED!');
         
         // UNAUTHORIZED ACTION DETECTED - Execute punishment
-        await punishUnauthorizedUser(sock, groupId, author, participants, action);
+        await punishUnauthorizedUser(sock, groupId, author, participants, action, creator);
         
     } catch (error) {
-        console.error('Error monitoring admin changes:', error);
+        console.error('❌ Error monitoring admin changes:', error);
     }
 }
 
-async function punishUnauthorizedUser(sock, groupId, perpetrator, affectedUsers, action) {
+async function punishUnauthorizedUser(sock, groupId, perpetrator, affectedUsers, action, groupCreator) {
     try {
         console.log(`🚨 PUNISHING UNAUTHORIZED ${action.toUpperCase()} by ${perpetrator}`);
+        
+        // ENHANCED PROTECTION: Double-check if perpetrator is authorized before punishing
+        const perpetratorIsAuthorized = isAuthorizedJID(perpetrator, sock, groupCreator);
+        
+        if (perpetratorIsAuthorized) {
+            console.log(`⚠️ PROTECTION TRIGGERED - Perpetrator is authorized: ${perpetrator}`);
+            await sock.sendMessage(groupId, {
+                text: `⚠️ **PROTECTION ACTIVE** ⚠️\n\n` +
+                      `@${perpetrator.split('@')[0]} is authorized (bot/owner/creator) and cannot be punished.\n\n` +
+                      `Authorized users are protected from automatic security actions.`,
+                mentions: [perpetrator]
+            });
+            return;
+        }
         
         // Mark this punishment to avoid infinite loops
         const punishmentKey = `${groupId}-${perpetrator}-demote`;
         if (!adminMonitor.recentPunishments) adminMonitor.recentPunishments = {};
         adminMonitor.recentPunishments[punishmentKey] = Date.now();
         
-        // Clean up old punishment records (older than 10 seconds)
+        // Also mark the original action to prevent re-processing
+        const originalActionKey = `${groupId}-${affectedUsers.join(',')}-${action}`;
+        adminMonitor.recentPunishments[originalActionKey] = Date.now();
+        
+        // Clean up old punishment records (older than 15 seconds)
         const now = Date.now();
         Object.keys(adminMonitor.recentPunishments).forEach(key => {
-            if (now - adminMonitor.recentPunishments[key] > 10000) {
+            if (now - adminMonitor.recentPunishments[key] > 15000) {
                 delete adminMonitor.recentPunishments[key];
             }
         });
         
         // Use jidDecode for proper phone number display
         const perpetratorDecoded = jidDecode(perpetrator);
-        const perpetratorNumber = perpetratorDecoded ? perpetratorDecoded.user : perpetrator.split('@')[0];
+        const perpetratorNumberDisplay = perpetratorDecoded ? perpetratorDecoded.user : perpetrator.split('@')[0];
         
         // Send warning
         await sock.sendMessage(groupId, {
             text: `🚨 **SECURITY VIOLATION DETECTED** 🚨\n\n` +
-                  `@${perpetratorNumber} made unauthorized ${action} action!\n\n` +
+                  `@${perpetratorNumberDisplay} made unauthorized ${action} action!\n\n` +
                   `⚡ Executing punishment...`,
             mentions: [perpetrator]
         });
@@ -163,9 +310,20 @@ async function punishUnauthorizedUser(sock, groupId, perpetrator, affectedUsers,
         console.log(`✅ Demoted perpetrator: ${perpetrator}`);
         adminMonitor.stats.totalPunishments++;
         
-        // If they promoted someone, demote that person too
+        // If they promoted someone, demote that person too (but protect authorized users)
         if (action === 'promote') {
+            const reversalMentions = [perpetrator];
+            let reversedCount = 0;
+            
             for (const user of affectedUsers) {
+                // ENHANCED PROTECTION: Check if promoted user is authorized
+                const userIsAuthorized = isAuthorizedJID(user, sock, groupCreator);
+                
+                if (userIsAuthorized) {
+                    console.log(`⚠️ Skipping reversal - promoted user is authorized: ${user}`);
+                    continue; // Skip demoting authorized users
+                }
+                
                 // Mark this reversal to avoid infinite loops
                 const reversalKey = `${groupId}-${user}-demote`;
                 adminMonitor.recentPunishments[reversalKey] = Date.now();
@@ -173,57 +331,45 @@ async function punishUnauthorizedUser(sock, groupId, perpetrator, affectedUsers,
                 await sock.groupParticipantsUpdate(groupId, [user], 'demote');
                 console.log(`✅ Reversed unauthorized promotion: ${user}`);
                 adminMonitor.stats.totalPunishments++;
+                reversalMentions.push(user);
+                reversedCount++;
             }
             
             await sock.sendMessage(groupId, {
                 text: `✅ **Justice Served!**\n\n` +
-                      `• @${perpetratorNumber} has been demoted\n` +
-                      `• Unauthorized promotions reversed\n` +
-                      `• Only group creator and bot can manage admins`,
-                mentions: [perpetrator, ...affectedUsers]
+                      `• @${perpetratorNumberDisplay} has been demoted\n` +
+                      `• ${reversedCount} unauthorized promotions reversed\n` +
+                      `• Bot, owners, and group creator are protected\n` +
+                      `• Only authorized users can manage admins`,
+                mentions: reversalMentions
             });
         } else {
             await sock.sendMessage(groupId, {
                 text: `✅ **Perpetrator Punished!**\n\n` +
-                      `@${perpetratorNumber} has been demoted for unauthorized demote action!\n\n` +
-                      `Only group creator and bot can manage admins.`,
+                      `@${perpetratorNumberDisplay} has been demoted for unauthorized demote action!\n\n` +
+                      `Only bot, owners, and group creator can manage admins.`,
                 mentions: [perpetrator]
             });
         }
         
     } catch (error) {
-        console.error('Error executing punishment:', error);
+        console.error('❌ Error executing punishment:', error);
         await sock.sendMessage(groupId, {
             text: `❌ Security enforcement failed: ${error.message}`
         });
     }
 }
 
-// Simple function to check if a user is authorized
+// Simple function to check if a user is authorized (for command usage)
 async function isAuthorizedAdmin(conn, groupId, userId) {
     try {
         const groupMetadata = await conn.groupMetadata(groupId);
         const creator = groupMetadata.owner;
         
-        // Handle different JID formats
-        const botJid = conn.user.id;
-        const botNumber = botJid.split(':')[0];
-        const userNumber = userId.split('@')[0];
-        const creatorNumber = creator ? creator.split('@')[0] : null;
-        
-        // Check if user is:
-        // 1. Group creator
-        // 2. Bot itself  
-        // 3. Bot creator/owner (from global.owner array)
-        const isGroupCreator = creatorNumber && userNumber === creatorNumber;
-        const isBot = userNumber === botNumber;
-        const isBotCreator = global.owner.some(ownerArray => {
-            return userNumber === ownerArray[0];
-        });
-        
-        return isGroupCreator || isBot || isBotCreator;
+        // Use our enhanced authorization check
+        return isAuthorizedJID(userId, conn, creator);
     } catch (error) {
-        console.error('Error checking authorization:', error);
+        console.error('❌ Error checking authorization:', error);
         return false;
     }
 }
@@ -342,19 +488,19 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
             case 'startprot':
             case 'start-prot':
                 if (!authorized) {
-                    return m.reply('❌ Only group creator, bot creator, and bot can control protection settings!');
+                    return m.reply('❌ Only bot, owners, and group creator can control protection settings!');
                 }
                 
                 const started = await startProt();
                 const startMsg = started ? 
-                    '🟢 **Admin Protection STARTED**\n\nNow monitoring for unauthorized admin changes!' :
+                    '🟢 **Admin Protection STARTED**\n\nNow monitoring for unauthorized admin changes!\n\n✅ Protected: Bot, Owners, Group Creator' :
                     '⚠️ Admin Protection is already running!';
                 return m.reply(startMsg);
                 
             case 'stopprot':
             case 'stop-prot':
                 if (!authorized) {
-                    return m.reply('❌ Only group creator, bot creator, and bot can control protection settings!');
+                    return m.reply('❌ Only bot, owners, and group creator can control protection settings!');
                 }
                 
                 const stopped = await stopProt();
@@ -367,7 +513,7 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
             case 'prot-status':
             case 'protectionstatus':
                 if (!authorized) {
-                    return m.reply('❌ Only group creator, bot creator, and bot can view protection status!');
+                    return m.reply('❌ Only bot, owners, and group creator can view protection status!');
                 }
                 
                 const status = getProtStatus();
@@ -375,13 +521,14 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
                                 `Status: ${status.status}\n` +
                                 `Uptime: ${status.uptime}\n` +
                                 `Violations Detected: ${status.stats.totalViolations}\n` +
-                                `Punishments Executed: ${status.stats.totalPunishments}`;
+                                `Punishments Executed: ${status.stats.totalPunishments}\n\n` +
+                                `🛡️ **Protected Users:**\n• Bot\n• Bot Owners\n• Group Creator`;
                 return m.reply(statusMsg);
                 
             case 'resetstats':
             case 'reset-stats':
                 if (!authorized) {
-                    return m.reply('❌ Only group creator, bot creator, and bot can reset statistics!');
+                    return m.reply('❌ Only bot, owners, and group creator can reset statistics!');
                 }
                 
                 resetStats();
@@ -394,7 +541,7 @@ const handler = async (m, { conn, command, text, args, usedPrefix }) => {
         }
         
     } catch (error) {
-        console.error('Error in admin control handler:', error);
+        console.error('❌ Error in admin control handler:', error);
         console.error('Error stack:', error.stack);
         return m.reply(`❌ An error occurred while processing your request: ${error.message}`);
     }
@@ -419,4 +566,4 @@ handler.group = true; // Only works in groups
 handler.admin = false; // We handle authorization manually
 handler.botAdmin = false; // We handle this manually too
 
-export default handler;
+export default handler;0

@@ -108,6 +108,27 @@ import { normalizeJid, safeGroupOperation } from '../lib/simple.js'; // Import t
                 return conn.reply(m.chat, `${tradutor.texto1[0]} ${usedPrefix}تخفيض @tag*`, m);
             }
             
+            // OWNER PROTECTION: Check if user is an owner or the bot itself
+            const userNumber = user.split('@')[0];
+            const botNumber = conn.user.id.split(':')[0];
+            
+            // Check if user is an owner
+            const isOwner = global.owner.some(ownerArray => {
+                const ownerNumber = ownerArray[0].replace('+', ''); // Remove + if present
+                return userNumber === ownerNumber;
+            });
+            
+            // Check if user is the bot itself
+            const isBot = userNumber === botNumber;
+            
+            if (isOwner) {
+                return conn.reply(m.chat, '❌ Cannot demote an owner! Owners are protected from demotion.', m);
+            }
+            
+            if (isBot) {
+                return conn.reply(m.chat, '❌ Cannot demote the bot itself!', m);
+            }
+            
             // Use the safe group operation function
             await safeGroupOperation(conn, m.chat, [user], 'demote');
             

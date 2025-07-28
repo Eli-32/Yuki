@@ -589,8 +589,10 @@ export async function handler(chatUpdate) {
                     console.error(e);
                     if (e) {
                         let text = format(e);
-                        for (const key of Object.values(global.APIKeys)) {
-                            text = text.replace(new RegExp(key, 'g'), '#HIDDEN#');
+                        if (global.APIKeys && typeof global.APIKeys === 'object') {
+                            for (const key of Object.values(global.APIKeys)) {
+                                text = text.replace(new RegExp(key, 'g'), '#HIDDEN#');
+                            }
                         }
                         if (e.name) {
                             const md5c = fs.readFileSync('./plugins/' + m.plugin);

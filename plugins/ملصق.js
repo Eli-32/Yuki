@@ -9,6 +9,27 @@ let handler = async (m, { conn, args, usedPrefix, command }) => {
   try {
     let [packname, ...author] = args.join(' ').split(/!|\|/);
     author = (author || []).join('|');
+    
+    // Set default packname and author
+    let finalPackname = 'Yuki'; // Default packname
+    let finalAuthor = ''; // Default author is empty
+    
+    // If user provided both packname and author (separated by |)
+    if (packname && author) {
+      finalPackname = packname;
+      finalAuthor = author;
+    }
+    // If user provided only one name (no | separator) - this becomes the packname only
+    else if (packname && !author) {
+      finalPackname = packname; // The name becomes the packname
+      finalAuthor = ''; // No author
+    }
+    // If no arguments provided, use defaults
+    else {
+      finalPackname = 'Yuki';
+      finalAuthor = '';
+    }
+    
     let q = m.quoted ? m.quoted : m;
     let mime = (q.msg || q).mimetype || q.mediaType || '';
     
@@ -21,18 +42,18 @@ let handler = async (m, { conn, args, usedPrefix, command }) => {
     if (/webp/g.test(mime)) {
       img = await q.download?.();
       if (!img) throw new Error('Failed to download media');
-      stiker = await addExif(img, packname || global.packname, author || global.author);
+      stiker = await addExif(img, finalPackname, finalAuthor);
     } else if (/image/g.test(mime)) {
       img = await q.download?.();
       if (!img) throw new Error('Failed to download media');
-      stiker = await createSticker(img, false, packname || global.packname, author || global.author);
+      stiker = await createSticker(img, false, finalPackname, finalAuthor);
     } else if (/video/g.test(mime) || /gif/g.test(mime)) {
       img = await q.download?.();
       if (!img) throw new Error('Failed to download media');
       if ((q.msg || q).seconds > 7) return m.reply('*Video or GIF cannot be longer than 7 seconds*');
-      stiker = await createSticker(img, false, packname || global.packname, author || global.author, true);
+      stiker = await createSticker(img, false, finalPackname, finalAuthor, true);
     } else if (args[0] && isUrl(args[0])) {
-      stiker = await createSticker(false, args[0], packname || global.packname, author || global.author);
+      stiker = await createSticker(false, args[0], finalPackname, finalAuthor);
     } else {
       throw `*RESPOND TO AN IMAGE, VIDEO, OR GIF WITH ${usedPrefix + command}*`;
     }
@@ -44,7 +65,7 @@ let handler = async (m, { conn, args, usedPrefix, command }) => {
       let q = m.quoted ? m.quoted : m;
       let img = await q.download?.();
       if (img) {
-        stiker = await createBasicSticker(img, false, global.packname, global.author);
+        stiker = await createBasicSticker(img, false, 'Yuki', '');
       } else {
         stiker = '*Failed to create sticker*';
       }
@@ -109,8 +130,8 @@ async function createSticker(img, url, packName, authorName, animated = false, q
   try {
     let stickerMetadata = { 
       type: animated ? 'full' : 'default', 
-      pack: packName || 'Sticker Pack', 
-      author: authorName || 'Bot', 
+      pack: packName || 'Yuki', 
+      author: authorName || '', 
       quality 
     };
     

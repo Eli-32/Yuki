@@ -34,49 +34,73 @@ const handler = async (m, {conn, usedPrefix, command}) => {
   const optimizedBuffer = await optimized.getBufferAsync(Jimp.MIME_JPEG);
   
   // Send initial progress message
-  const progressMsg = await m.reply("🔄 Starting enhancement...\n▱▱▱▱▱▱▱▱▱▱ 0%");
+  const progressMsg = await m.reply("🔄 بدا التحسين...\n▱▱▱▱▱▱▱▱▱▱ 0%");
   
   let progress = 0;
+  let lastUpdate = 0;
   const progressInterval = setInterval(async () => {
     try {
-      progress += Math.random() * 15 + 5; // Random progress increment
-      if (progress > 90) progress = 90; // Don't reach 100% until actually done
+      progress += Math.random() * 10 + 5; // Slower progress increment
+      if (progress > 85) progress = 85; // Don't reach 100% until actually done
       
       const filledBlocks = Math.floor(progress / 10);
       const emptyBlocks = 10 - filledBlocks;
       const progressBar = "▰".repeat(filledBlocks) + "▱".repeat(emptyBlocks);
       
-      await conn.sendMessage(m.chat, {
-        text: `🔄 Processing enhancement...\n${progressBar} ${Math.floor(progress)}%`,
-        edit: progressMsg.key
-      });
+      // Only update every 3 seconds to avoid rate limiting
+      const now = Date.now();
+      if (now - lastUpdate > 3000) {
+        await conn.sendMessage(m.chat, {
+          text: `🔄 جاري التحسين...\n${progressBar} ${Math.floor(progress)}%`,
+          edit: progressMsg.key
+        });
+        lastUpdate = now;
+      }
     } catch (e) {
-      // Ignore edit errors
+      // Ignore edit errors and stop interval
+      clearInterval(progressInterval);
     }
-  }, 1000);
+  }, 3000); // Changed from 1000ms to 3000ms
   
   try {
     let pr = await ihancer(optimizedBuffer, { method: 1, size: 'high' });
     clearInterval(progressInterval);
     
     // Show 100% completion
-    await conn.sendMessage(m.chat, {
-      text: "✅ Enhancement complete!\n▰▰▰▰▰▰▰▰▰▰ 100%",
-      edit: progressMsg.key
-    });
+    try {
+      await conn.sendMessage(m.chat, {
+        text: "✅ تم التحسين!\n▰▰▰▰▰▰▰▰▰▰ 100%",
+        edit: progressMsg.key
+      });
+    } catch (editError) {
+      // If edit fails, send new message
+      await m.reply("✅ تم التحسين!");
+    }
     
     await conn.sendMessage(m.chat, {image: pr}, {quoted: m});
   } catch (error) {
     clearInterval(progressInterval);
+    
+    // Send error message
+    try {
+      await conn.sendMessage(m.chat, {
+        text: "*[❗] ERROR, PLEASE CHECK THE INPUT FILE*",
+        edit: progressMsg.key
+      });
+    } catch (editError) {
+      await m.reply("*[❗] ERROR, PLEASE CHECK THE INPUT FILE*");
+    }
+    
     throw error;
   }
- } catch {
-  throw tradutor.texto4;
+ } catch (error) {
+  console.error('HDR Enhancement Error:', error);
+  await m.reply(tradutor.texto4);
  }
 };
 handler.help = ["remini", "hd", "enhance"];
 handler.tags = ["ai", "tools"];
-handler.command = ["remini", "hd", "enhance"];
+handler.command = ["remini", "hd", "تحسين"];
 export default handler;
 
 async function ihancer(buffer, { method = 1, size = 'medium' } = {}) {

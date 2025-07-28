@@ -30,7 +30,7 @@ let handler = async (m, { conn, args, usedPrefix, command }) => {
       img = await q.download?.();
       if (!img) throw new Error('Failed to download media');
       if ((q.msg || q).seconds > 7) return m.reply('*Video or GIF cannot be longer than 7 seconds*');
-      stiker = await createSticker(img, false, packname || global.packname, author || global.author, true); // Animated GIF/video sticker
+      stiker = await createSticker(img, false, packname || global.packname, author || global.author, true);
     } else if (args[0] && isUrl(args[0])) {
       stiker = await createSticker(false, args[0], packname || global.packname, author || global.author);
     } else {
@@ -39,7 +39,7 @@ let handler = async (m, { conn, args, usedPrefix, command }) => {
   } catch (e) {
     console.error('Sticker creation error:', e);
     
-    // Fallback to basic sticker creation
+    // Quick fallback to basic sticker creation
     try {
       let q = m.quoted ? m.quoted : m;
       let img = await q.download?.();
@@ -54,51 +54,39 @@ let handler = async (m, { conn, args, usedPrefix, command }) => {
     }
   } finally {
     if (stiker instanceof Buffer && stiker.length > 0) {
-      // Save buffer to temporary file and send as sticker
-      let tmpFile = null;
+      // Fast path: send directly as sticker without file I/O
       try {
-        const tmpDir = path.join(process.cwd(), 'tmp');
-        
-        // Ensure tmp directory exists
-        if (!fs.existsSync(tmpDir)) {
-          fs.mkdirSync(tmpDir, { recursive: true });
-        }
-        
-        // Create unique filename
-        tmpFile = path.join(tmpDir, `sticker_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.webp`);
-        
-        // Write the sticker buffer to file
-        fs.writeFileSync(tmpFile, stiker);
-        
-        // Verify the file was written correctly
-        if (!fs.existsSync(tmpFile) || fs.statSync(tmpFile).size === 0) {
-          throw new Error('Failed to write sticker file');
-        }
-        
-        // Send as sticker
-        await conn.sendFile(m.chat, tmpFile, '', '', m, { asSticker: true });
-        
-      } catch (sendError) {
-        console.error('Error sending sticker:', sendError);
-        
-        // Fallback: try sending as document
-        try {
-          if (tmpFile && fs.existsSync(tmpFile)) {
-            await conn.sendFile(m.chat, tmpFile, 'sticker.webp', '', m, { asDocument: true });
-          } else {
-            throw new Error('Temp file not found for fallback');
+        await conn.sendMessage(m.chat, { 
+          stickerMessage: { 
+            url: `data:image/webp;base64,${stiker.toString('base64')}` 
           }
-        } catch (fallbackError) {
-          console.error('Fallback error:', fallbackError);
+        });
+      } catch (sendError) {
+        console.error('Direct send failed, trying file method:', sendError);
+        
+        // Fallback to file method
+        let tmpFile = null;
+        try {
+          const tmpDir = path.join(process.cwd(), 'tmp');
+          if (!fs.existsSync(tmpDir)) {
+            fs.mkdirSync(tmpDir, { recursive: true });
+          }
+          
+          tmpFile = path.join(tmpDir, `sticker_${Date.now()}.webp`);
+          fs.writeFileSync(tmpFile, stiker);
+          
+          await conn.sendFile(m.chat, tmpFile, '', '', m, { asSticker: true });
+          
+        } catch (fileError) {
+          console.error('File method failed:', fileError);
           m.reply('*Failed to send sticker*');
-        }
-      } finally {
-        // Clean up temp file
-        if (tmpFile && fs.existsSync(tmpFile)) {
-          try {
-            fs.unlinkSync(tmpFile);
-          } catch (cleanupError) {
-            console.error('Cleanup error:', cleanupError);
+        } finally {
+          if (tmpFile && fs.existsSync(tmpFile)) {
+            try {
+              fs.unlinkSync(tmpFile);
+            } catch (cleanupError) {
+              // Silent cleanup error
+            }
           }
         }
       }
@@ -117,7 +105,7 @@ const isUrl = (text) => {
   return /https?:\/\/\S+\.(jpg|jpeg|png|gif)/i.test(text);
 };
 
-async function createSticker(img, url, packName, authorName, animated = false, quality = 20) {
+async function createSticker(img, url, packName, authorName, animated = false, quality = 10) {
   try {
     let stickerMetadata = { 
       type: animated ? 'full' : 'default', 

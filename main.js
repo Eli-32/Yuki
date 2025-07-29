@@ -17,7 +17,7 @@ import path, {join} from 'path';
 import {fileURLToPath, pathToFileURL} from 'url';
 import {platform} from 'process';
 import * as ws from 'ws';
-import {readdirSync, statSync, unlinkSync, existsSync, readFileSync, rmSync, watch, stat, mkdirSync} from 'fs';
+import {readdirSync, statSync, unlinkSync, existsSync, readFileSync, rmSync, watch, stat, mkdirSync, writeFileSync} from 'fs';
 import yargs from 'yargs';
 import {spawn} from 'child_process';
 import lodash from 'lodash';
@@ -651,6 +651,29 @@ async function connectionUpdate(update) {
       console.log(chalk.green('✅ Successfully connected to WhatsApp'));
       console.log(chalk.cyan(`👤 Connected as: ${conn.user?.name || 'Unknown'}`));
       console.log(chalk.cyan(`📱 Phone: ${conn.user?.id || 'Unknown'}`));
+    }
+
+    // Check for restart flag file
+    if (existsSync('./restart.json')) {
+      try {
+        const restartInfo = JSON.parse(readFileSync('./restart.json'));
+        const { chatId, timestamp } = restartInfo;
+        const timeSinceRestart = Date.now() - timestamp;
+
+        // Only send message if restart was recent (e.g., within 2 minutes)
+        if (timeSinceRestart < 120000) {
+          await conn.sendMessage(chatId, { text: 'Enhanced Yuki initialized successfully! 🚀' });
+        }
+        
+        // Clean up the flag file
+        unlinkSync('./restart.json');
+      } catch (e) {
+        console.error('Error handling restart notification:', e);
+        // Still try to delete the file to prevent issues
+        if (existsSync('./restart.json')) {
+          unlinkSync('./restart.json');
+        }
+      }
     }
     
     // Initialize encryption key manager

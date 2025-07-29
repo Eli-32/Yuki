@@ -58,14 +58,12 @@ function initializeAdminMonitor(sock) {
 // Helper function to normalize JID formats for comparison
 function normalizeJid(jid) {
     if (!jid) return null;
-    
-    // Extract just the number part from different JID formats
-    const numberMatch = jid.match(/(\d+)/);
-    if (!numberMatch) return jid;
-    
-    const number = numberMatch[1];
-    
-    // Return both @lid and @s.whatsapp.net variations
+
+    // Extract the number part by removing non-digit characters from the user part of the JID
+    const number = jid.split('@')[0].replace(/\D/g, '');
+    if (!number) return { original: jid, number: null }; // Return original if no number found
+
+    // Return number and different JID variations
     return {
         number: number,
         lid: number + '@lid',

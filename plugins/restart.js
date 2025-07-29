@@ -1,62 +1,38 @@
-import { spawn } from 'child_process'
 import { jidDecode } from '@whiskeysockets/baileys';
+import { writeFileSync } from 'fs';
 
-let handler = async (m, { conn, isROwner, text }) => {
-  // --- TEMPORARY DEBUGGING START (DO NOT REMOVE FOR NOW) ---
-  // Debug logs removed to prevent terminal spam
-  // Debug logs removed to prevent terminal spam
-  // Debug logs removed to prevent terminal spam
-
-  // Debug logs removed to prevent terminal spam
-  console.log(JSON.stringify(m, null, 2)); // THIS IS THE CRUCIAL LINE
-  // Debug logs removed to prevent terminal spam
-
+let handler = async (m, { conn, isROwner }) => {
   const actualSenderJid = m.key?.participant || m.key?.remoteJid || m.chat;
-
-  console.log('----------------------------------------------------');
-  // Debug logs removed to prevent terminal spam
-  console.log('----------------------------------------------------');
-  console.log('1. Raw m.key:', m.key);
-  console.log('2. Raw m.chat:', m.chat);
-  console.log('3. Determined Sender JID (actualSenderJid):', actualSenderJid);
-  console.log('4. Your global.owner array (from main.js):', global.owner);
-  console.log('5. isROwner passed to handler (from framework):', isROwner);
-
   let senderNumber = 'COULD_NOT_EXTRACT_NUMBER';
   let isActualOwner = false;
 
   if (actualSenderJid) {
     try {
-      // Use jidDecode for proper phone number extraction
       const decoded = jidDecode(actualSenderJid);
       senderNumber = decoded ? decoded.user : actualSenderJid.split('@')[0];
-      
-      // Fix: Check if the sender number exists in any of the owner arrays
       isActualOwner = global.owner.some(ownerArray => ownerArray[0] === senderNumber);
-      console.log('6. Extracted Sender Number (from JID):', senderNumber);
-      console.log('7. Is extracted number in global.owner?', isActualOwner);
     } catch (e) {
       console.error('ERROR: Failed to extract senderNumber from JID:', e);
-      console.log('JID that caused error:', actualSenderJid);
     }
-  } else {
-    console.warn('WARNING: actualSenderJid was undefined or null!');
   }
-  // Debug logs removed to prevent terminal spam
-  // --- TEMPORARY DEBUGGING END ---
+
+  if (!isActualOwner) {
+    return m.reply('You are not the owner!');
+  }
 
   if (typeof process.send !== 'function') {
-    return m.reply('❌ لا يمكن إعادة تشغيل البوت في هذا الوضع.');
+    return m.reply('❌ This command can only be used when running as a child process.');
   }
-  process.send('reset');
 
-  if (isActualOwner) {
-    await m.reply('🔄 Restarting Bot...\n Wait a moment');
-    process.send('reset');
-  } else {
-    await m.reply('You are not the owner!');
-    console.log(`Command blocked for non-owner: ${senderNumber} (or unable to determine sender).`);
-  }
+  // Send restart message before triggering the restart
+  await m.reply('🔄 Restarting Bot...\nPlease wait a moment.');
+
+  // Create a flag file to indicate a restart is in progress and where it was triggered
+  const restartInfo = { chatId: m.chat, timestamp: Date.now() };
+  writeFileSync('./restart.json', JSON.stringify(restartInfo, null, 2));
+
+  // Trigger the restart via the process manager
+  process.send('reset');
 }
 
 handler.help = ['restart']

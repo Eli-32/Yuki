@@ -153,114 +153,121 @@ function checkUserProgress(userInput, currentNames, playerProgress, playerId) {
 }
 
 handler.all = async function(m, { conn }) {
-    const chatId = m.chat;
-    const gameState = getGameState(chatId);
-    
-    // Check for start game command with optional number
-    const startMatch = m.text.match(/^\.مكت\s*(\d+)?$/i);
-    if (startMatch) {
-        if (gameState.active) {
-            return m.reply('اللعبة قيد التشغيل بالفعل.');
-        }
-
-        // Parse the number (supports both Arabic and English numerals)
-        let requestedCount = 1;
-        if (startMatch[1]) {
-            // Convert Arabic numerals to English if needed
-            let numStr = startMatch[1].replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
-            requestedCount = parseInt(numStr) || 1;
-            // Limit to reasonable number
-            requestedCount = Math.min(Math.max(requestedCount, 1), 10);
-        }
-
-        // Reset state ONLY here
-        gameState.active = true;
-        gameState.nameCount = requestedCount;
-        gameState.responses = {};
-        gameState.playerProgress = {};
-        gameState.currentNames = getRandomNames(requestedCount);
-        gameState.lastResponseTime = Date.now();
+    try {
+        const chatId = m.chat;
+        const gameState = getGameState(chatId);
         
-        // Display names with spaces between them
-        const nameDisplay = gameState.currentNames.join(' ');
-        await m.reply(`*${nameDisplay}*`);
-        
-    } else if (/^\.تست (.+)$/i.test(m.text)) {
-        // Debug command to test matching
-        const testInput = m.text.match(/^\.تست (.+)$/i)[1];
-        const normalized = normalizeArabicText(testInput);
-        let results = [];
-        
-        names.slice(0, 10).forEach(name => {
-            const normalizedName = normalizeArabicText(name);
-            if (normalized === normalizedName || normalized.includes(normalizedName) || normalizedName.includes(normalized)) {
-                results.push(`${name} ← ${normalizedName}`);
+        // Check for start game command with optional number
+        const startMatch = m.text.match(/^\.مكت\s*(\d+)?$/i);
+        if (startMatch) {
+            if (gameState.active) {
+                return m.reply('اللعبة قيد التشغيل بالفعل.');
             }
-        });
-        
-        await m.reply(`Input: "${testInput}" → "${normalized}"\n\nMatches:\n${results.join('\n') || 'No matches'}`);
-        
-    } else if (/^\.سكت$/i.test(m.text)) {
-        if (!gameState.active) {
-            return m.reply('لا توجد لعبة قيد التشغيل حالياً.');
-        }
 
-        gameState.active = false;
+            // Parse the number (supports both Arabic and English numerals)
+            let requestedCount = 1;
+            if (startMatch[1]) {
+                // Convert Arabic numerals to English if needed
+                let numStr = startMatch[1].replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+                requestedCount = parseInt(numStr) || 1;
+                // Limit to reasonable number
+                requestedCount = Math.min(Math.max(requestedCount, 1), 10);
+            }
 
-        if (Object.keys(gameState.responses).length === 0) {
-            await m.reply('لم يربح أحد نقاطاً في هذه اللعبة.');
-        } else {
-            let result = Object.entries(gameState.responses).map(([jid, points]) => {
-                return `@${jid.split('@')[0]}: ${points} نقطة`;
-            }).join('\n');
-
-            await m.reply(`اللعبة انتهت!\n\nالنقاط:\n${result}`, null, {
-                mentions: Object.keys(gameState.responses)
-            });
-        }
-
-        gameState.currentNames = []; // Clear the current names
-        gameState.playerProgress = {}; // Clear player progress
-        
-    } else if (gameState.active && gameState.currentNames.length > 0 && m.text && !m.text.startsWith('.')) {
-        // Only process non-command messages when game is active
-        // Prevent single-letter words from being considered
-        if (m.text.trim().length <= 1) return;
-        
-        // Prevent spam - don't respond too frequently
-        const now = Date.now();
-        if (now - gameState.lastResponseTime < 1000) return; // 1 second cooldown
-        
-        const progress = checkUserProgress(
-            m.text,
-            gameState.currentNames,
-            gameState.playerProgress,
-            m.sender
-        );
-
-        // Only respond if player actually found something new
-        if (progress.foundNewMatches) {
-            gameState.lastResponseTime = now;
+            // Reset state ONLY here
+            gameState.active = true;
+            gameState.nameCount = requestedCount;
+            gameState.responses = {};
+            gameState.playerProgress = {};
+            gameState.currentNames = getRandomNames(requestedCount);
+            gameState.lastResponseTime = Date.now();
             
-            if (progress.hasAllNames) {
-                // Player completed all names - give point and move to next round
-                if (!gameState.responses[m.sender]) {
-                    gameState.responses[m.sender] = 1;
-                } else {
-                    gameState.responses[m.sender] += 1;
+            // Display names with spaces between them
+            const nameDisplay = gameState.currentNames.join(' ');
+            await m.reply(`*${nameDisplay}*`);
+            
+        } else if (/^\.تست (.+)$/i.test(m.text)) {
+            // Debug command to test matching
+            const testInput = m.text.match(/^\.تست (.+)$/i)[1];
+            const normalized = normalizeArabicText(testInput);
+            let results = [];
+            
+            names.slice(0, 10).forEach(name => {
+                const normalizedName = normalizeArabicText(name);
+                if (normalized === normalizedName || normalized.includes(normalizedName) || normalizedName.includes(normalized)) {
+                    results.push(`${name} ← ${normalizedName}`);
                 }
+            });
+            
+            await m.reply(`Input: "${testInput}" → "${normalized}"\n\nMatches:\n${results.join('\n') || 'No matches'}`);
+            
+        } else if (/^\.سكت$/i.test(m.text)) {
+            if (!gameState.active) {
+                return m.reply('لا توجد لعبة قيد التشغيل حالياً.');
+            }
 
-                // Reset progress and show new names
-                gameState.playerProgress = {};
-                gameState.currentNames = getRandomNames(gameState.nameCount);
-        
-                const nameDisplay = gameState.currentNames.join(' ');
-                await m.reply(`*${nameDisplay}*`);
+            gameState.active = false;
+
+            if (Object.keys(gameState.responses).length === 0) {
+                await m.reply('لم يربح أحد نقاطاً في هذه اللعبة.');
             } else {
-                // Player found some names but not all - no feedback needed
-                // Removed the "found X out of Y names" message
+                let result = Object.entries(gameState.responses).map(([jid, points]) => {
+                    return `@${jid.split('@')[0]}: ${points} نقطة`;
+                }).join('\n');
+
+                await m.reply(`اللعبة انتهت!\n\nالنقاط:\n${result}`, null, {
+                    mentions: Object.keys(gameState.responses)
+                });
+            }
+
+            gameState.currentNames = []; // Clear the current names
+            gameState.playerProgress = {}; // Clear player progress
+            
+        } else if (gameState.active && gameState.currentNames.length > 0 && m.text && !m.text.startsWith('.')) {
+            // Only process non-command messages when game is active
+            // Prevent single-letter words from being considered
+            if (m.text.trim().length <= 1) return;
+            
+            // Prevent spam - don't respond too frequently
+            const now = Date.now();
+            if (now - gameState.lastResponseTime < 1000) return; // 1 second cooldown
+            
+            const progress = checkUserProgress(
+                m.text,
+                gameState.currentNames,
+                gameState.playerProgress,
+                m.sender
+            );
+
+            // Only respond if player actually found something new
+            if (progress.foundNewMatches) {
+                gameState.lastResponseTime = now;
+                
+                if (progress.hasAllNames) {
+                    // Player completed all names - give point and move to next round
+                    if (!gameState.responses[m.sender]) {
+                        gameState.responses[m.sender] = 1;
+                    } else {
+                        gameState.responses[m.sender] += 1;
+                    }
+
+                    // Reset progress and show new names
+                    gameState.playerProgress = {};
+                    gameState.currentNames = getRandomNames(gameState.nameCount);
+            
+                    const nameDisplay = gameState.currentNames.join(' ');
+                    await m.reply(`*${nameDisplay}*`);
+                } else {
+                    // Player found some names but not all - no feedback needed
+                    // Removed the "found X out of Y names" message
+                }
             }
         }
+    } catch (err) {
+        console.error('Masabik game error:', err);
+        try {
+            await m.reply('❌ حدث خطأ غير متوقع في اللعبة. أعد المحاولة أو أعد تشغيل اللعبة.');
+        } catch {}
     }
 };
 

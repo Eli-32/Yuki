@@ -48,44 +48,33 @@ import { normalizeJid, safeGroupOperation } from '../lib/simple.js'; // Import t
         
         let number;
         let user;
-        
-        // Enhanced parsing to handle @lid mentions
+        let cleanNumber;
+        let properJid;
+        // Enhanced parsing to handle @lid mentions and normalize JIDs
         if (!text && !m.quoted) {
             return conn.reply(m.chat, `${tradutor.texto1[0]} ${usedPrefix}تخفيض @tag*\n*┠≽ ${usedPrefix}تخفيض ${tradutor.texto1[1]}`, m);
         }
-        
         try {
-            // Priority 1: Check mentionedJid first (most reliable)
             if (m.mentionedJid && m.mentionedJid.length > 0) {
-                user = m.mentionedJid[0];
-            }
-            // Priority 2: Check quoted message
-            else if (m.quoted?.sender) {
-                user = m.quoted.sender;
-            }
-            // Priority 3: Parse text content
-            else if (text) {
-                // Check if it's a @lid mention
-                if (text.includes('@lid')) {
-                    const lidMatch = text.match(/(\d+@lid)/);
-                    if (lidMatch) {
-                        user = lidMatch[1]; // Keep the full @lid identifier
-                    }
-                } else if (text.match(/@/g) && !isNaN(text.split('@')[1])) {
-                    // Regular @mention
-                    number = text.split('@')[1];
-                    user = normalizeJid(number);
-                } else if (text.match(/\d+@lid/)) {
-                    // @lid number without @ symbol at the beginning
-                    const lidMatch = text.match(/(\d+@lid)/);
-                    if (lidMatch) {
-                        user = lidMatch[1];
-                    }
-                } else if (!isNaN(text)) {
-                    // Plain number
-                    number = text;
-                    user = normalizeJid(number);
+                cleanNumber = m.mentionedJid[0].replace(/@.*$/, '');
+            } else if (m.quoted?.sender) {
+                cleanNumber = m.quoted.sender.replace(/@.*$/, '');
+            } else if (text) {
+                const numberMatch = text.match(/@(\d+)/);
+                if (numberMatch) {
+                    cleanNumber = numberMatch[1];
+                } else {
+                    cleanNumber = text.replace(/[^\d]/g, '');
                 }
+            }
+            if (!cleanNumber) {
+                return conn.reply(m.chat, tradutor.texto2, m);
+            }
+            properJid = cleanNumber + '@s.whatsapp.net';
+            user = properJid;
+            // Validation for number length
+            if (cleanNumber.length > 13 || (cleanNumber.length < 11 && cleanNumber.length > 0)) {
+                return conn.reply(m.chat, tradutor.texto2, m);
             }
             
             // Enhanced validation for @lid vs regular numbers

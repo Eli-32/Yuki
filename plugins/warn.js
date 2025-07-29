@@ -1,8 +1,50 @@
 import mongoose from 'mongoose';
 import WarningModel from '../lib/Warning.js';
-import { getPhoneNumber, normalizeJid } from '../lib/simple-jid.js';
+import pkg from 'baileys-pro';
+const { proto, jidNormalizedUser } = pkg;
+import { normalizeJid, extractUserFromJid } from '../lib/simple.js';
 
-// Removed: connectDB and mongoose.connect logic. Assume connection is handled globally.
+// Add database connection logic
+const connectDB = async () => {
+  try {
+    if (mongoose.connection.readyState === 0) {
+      await mongoose.connect(
+        process.env.MONGODB_URI || 'mongodb+srv://itachi3mk:mypassis1199@cluster0.zzyxjo3.mongodb.net/?retryWrites=true&w=majority'
+      );
+      console.log('✅ MongoDB connected successfully for warnings system');
+    }
+  } catch (error) {
+    console.error('❌ MongoDB connection failed:', error);
+  }
+};
+connectDB();
+
+// Helper to properly handle JIDs (preserve @lid format for baileys-pro compatibility)
+const processJid = (jid) => {
+  if (!jid) return null;
+  // Keep @lid JIDs as-is for baileys-pro compatibility
+  if (jid.includes('@lid')) {
+    return jid;
+  }
+  // Use normalizeJid for other formats
+  return normalizeJid(jid);
+};
+
+// Helper to format user for mention - ENHANCED VERSION
+const formatUserForMention = (jid) => {
+  if (!jid) return { text: 'مستخدم غير معروف', jid: null };
+  
+  // Extract the number part before @
+  const userId = jid.split('@')[0];
+  
+  return {
+    text: `@${userId}`,
+    jidForMention: jid, // Original JID
+    jidS: userId + '@s.whatsapp.net', // Standard format
+    jidC: userId + '@c.us', // WhatsApp Web format
+    jidLid: jid.includes('@lid') ? jid : null // LID format if applicable
+  };
+};
 
 mongoose.connection.on('disconnected', () => {
   console.log('⚠️ MongoDB disconnected!');
@@ -17,7 +59,7 @@ const validateAdmin = async (ctx) => {
   try {
     const metadata = await ctx.conn.groupMetadata(ctx.chat);
     const isAdmin = metadata.participants.some(participant => {
-      const isMatch = participant.id === ctx.sender;
+      const isMatch = jidNormalizedUser(participant.id) === jidNormalizedUser(ctx.sender);
       const hasAdmin = participant.admin === 'admin' || participant.admin === 'superadmin';
       return isMatch && hasAdmin;
     });
@@ -33,7 +75,7 @@ const validateBotAdmin = async (ctx) => {
     const metadata = await ctx.conn.groupMetadata(ctx.chat);
     const botJid = ctx.conn.user.jid;
     return metadata.participants.some(
-      participant => participant.id === botJid && (participant.admin === 'admin' || participant.admin === 'superadmin')
+      participant => jidNormalizedUser(participant.id) === jidNormalizedUser(botJid) && (participant.admin === 'admin' || participant.admin === 'superadmin')
     );
   } catch (error) {
     console.error('Bot admin validation error:', error);
@@ -44,37 +86,55 @@ const validateBotAdmin = async (ctx) => {
 const resolveTargetUser = (ctx) => {
   try {
     console.log('Resolving target user...');
-    console.log('Quoted message:', ctx.quoted);
-    console.log('Mentioned JIDs:', ctx.mentionedJid);
+    console.log('Raw mentionedJid:', ctx.mentionedJid);
+    console.log('Raw quoted:', ctx.quoted);
     
-    // Check for quoted message first
+    let targetJid = null;
+    
+    // Check quoted message first
     if (ctx.quoted && ctx.quoted.sender) {
-      console.log('Found quoted sender:', ctx.quoted.sender);
-      const normalizedJid = normalizeJid(ctx.quoted.sender);
-      const cleanId = getPhoneNumber(ctx.quoted.sender);
-      console.log('Resolved from quote - JID:', normalizedJid, 'ID:', cleanId);
-      return {
-        id: cleanId,
-        jid: normalizedJid,
-        mention: `@${cleanId}`
-      };
+      targetJid = ctx.quoted.sender;
+      console.log('Found target from quoted message:', targetJid);
     }
-
-    // Check for mentioned users
-    if (ctx.mentionedJid?.length > 0) {
-      console.log('Found mentioned user:', ctx.mentionedJid[0]);
-      const normalizedJid = normalizeJid(ctx.mentionedJid[0]);
-      const cleanId = getPhoneNumber(ctx.mentionedJid[0]);
-      console.log('Resolved from mention - JID:', normalizedJid, 'ID:', cleanId);
-      return {
-        id: cleanId,
-        jid: normalizedJid,
-        mention: `@${cleanId}`
-      };
+    // Check mentions
+    else if (ctx.mentionedJid?.length > 0) {
+      targetJid = ctx.mentionedJid[0];
+      console.log('Found target from mentions:', targetJid);
     }
-
-    console.log('No target user found');
-    return null;
+    // Check if number is in the text (like @212790363086895)
+    else if (ctx.text) {
+      const numberMatch = ctx.text.match(/@(\d+)/);
+      if (numberMatch) {
+        targetJid = numberMatch[1] + '@s.whatsapp.net';
+        console.log('Found target from text match:', targetJid);
+      }
+    }
+    
+    if (!targetJid) {
+      console.log('No target JID found');
+      return null;
+    }
+    
+    // Extract clean number for database storage
+    const cleanNumber = targetJid.split('@')[0].replace(/[^\d]/g, '');
+    
+    console.log('Original JID:', targetJid, 'Clean number:', cleanNumber);
+    
+    const mentionData = formatUserForMention(targetJid);
+    
+    return {
+      id: cleanNumber,
+      jid: targetJid, // Keep original format
+      mention: mentionData,
+      // Provide multiple JID formats to try
+      possibleJids: [
+        targetJid, // Original
+        cleanNumber + '@s.whatsapp.net', // Standard
+        cleanNumber + '@c.us', // WhatsApp Web
+        ...(targetJid.includes('@lid') ? [targetJid] : [])
+      ].filter((jid, index, arr) => arr.indexOf(jid) === index) // Remove duplicates
+    };
+    
   } catch (error) {
     console.error('Error resolving target user:', error);
     return null;
@@ -120,52 +180,109 @@ async function handleAddWarning(ctx, reason) {
     console.log('User ID:', targetUser.id, 'Group ID:', ctx.chat);
 
     // Database operation with better error handling
-    const userWarnings = await WarningModel.findOneAndUpdate(
-      { userId: targetUser.id, groupId: ctx.chat },
-      {
-        $push: {
-          warnings: {
-            cause: reason || '❌ لم يتم تقديم سبب',
-            date: new Date(),
-            issuer: ctx.sender
+    let userWarnings;
+    try {
+      userWarnings = await WarningModel.findOneAndUpdate(
+        { userId: targetUser.id, groupId: ctx.chat },
+        {
+          $push: {
+            warnings: {
+              cause: reason || '❌ لم يتم تقديم سبب',
+              date: new Date(),
+              issuer: ctx.sender
+            }
           }
-        }
-      },
-      { new: true, upsert: true }
-    ).catch(dbError => {
+        },
+        { new: true, upsert: true }
+      );
+    } catch (dbError) {
       console.error('Database operation failed:', dbError);
-      throw new Error(`Database error: ${dbError.message}`);
-    });
+      
+      // Handle duplicate key error specifically
+      if (dbError.code === 11000) {
+        console.log('Duplicate key error detected, attempting to find existing record...');
+        try {
+          // Try to find the existing record and update it
+          userWarnings = await WarningModel.findOne({ userId: targetUser.id, groupId: ctx.chat });
+          if (userWarnings) {
+            // Add the warning to existing record
+            userWarnings.warnings.push({
+              cause: reason || '❌ لم يتم تقديم سبب',
+              date: new Date(),
+              issuer: ctx.sender
+            });
+            await userWarnings.save();
+            console.log('Successfully updated existing record');
+          } else {
+            // If no record found, there might be an index issue
+            throw new Error('فشل في العثور على السجل الموجود. قد تحتاج إلى إعادة تشغيل البوت لإصلاح قاعدة البيانات.');
+          }
+        } catch (fallbackError) {
+          console.error('Fallback operation also failed:', fallbackError);
+          throw new Error(`خطأ في قاعدة البيانات: ${fallbackError.message}`);
+        }
+      } else {
+        throw new Error(`Database error: ${dbError.message}`);
+      }
+    }
 
     console.log('Database operation successful, warnings count:', userWarnings.warnings.length);
 
-    // Send notification
+    // Send notification with proper mention
     const warningCount = userWarnings.warnings.length;
     const lastWarning = userWarnings.warnings[warningCount - 1];
     
-    await ctx.conn.sendMessage(ctx.chat, {
-      text: `🔔 *إنذار لـ ${targetUser.mention}*\n\n📊 العدد: ${warningCount}/5\n📝 السبب: ${lastWarning.cause}\n🕒 التاريخ: ${new Date(lastWarning.date).toLocaleString('ar-EG')}\n🚨 تحذير: عند الوصول لـ 5 إنذارات سيتم الطرد`
-    }, {
-      mentions: [targetUser.jid]
-    });
+    console.log('Sending message with mentions:', targetUser.possibleJids);
+    console.log('Message text will include:', targetUser.mention.text);
+    
+    // Enhanced mention handling for @lid contacts
+    let finalMentions = [];
+    
+    // For @lid contacts, use the original JID format
+    if (targetUser.jid.includes('@lid')) {
+      finalMentions = [targetUser.jid];
+    } else {
+      // For regular contacts, try standard format first
+      const standardJid = targetUser.id + '@s.whatsapp.net';
+      finalMentions = [standardJid];
+    }
+    
+    console.log('Final mentions array:', finalMentions);
+    
+    try {
+      await ctx.conn.sendMessage(ctx.chat, {
+        text: `🔔 *إنذار لـ ${targetUser.mention.text}*\n\n📊 العدد: ${warningCount}/3\n📝 السبب: ${lastWarning.cause}\n🕒 التاريخ: ${new Date(lastWarning.date).toLocaleString('ar-EG')}\n🚨 تحذير: عند الوصول لـ 3 إنذارات سيتم الطرد`,
+        mentions: finalMentions
+      });
+      console.log('Message sent successfully with mentions:', finalMentions);
+    } catch (mentionError) {
+      console.log('Failed with mentions:', finalMentions, 'Error:', mentionError.message);
+      // Fallback: send without mentions
+      await ctx.conn.sendMessage(ctx.chat, {
+        text: `🔔 *إنذار لـ ${targetUser.mention.text}*\n\n📊 العدد: ${warningCount}/5\n📝 السبب: ${lastWarning.cause}\n🕒 التاريخ: ${new Date(lastWarning.date).toLocaleString('ar-EG')}\n🚨 تحذير: عند الوصول لـ 5 إنذارات سيتم الطرد`
+      });
+      console.log('Message sent without mentions as fallback');
+    }
 
     // Auto-moderation check
-    if (warningCount >= 5) {
-      try {
+    if (warningCount >= 3) {
+        try {
         const isBotAdmin = await validateBotAdmin(ctx);
         if (isBotAdmin) {
           console.log('Attempting to remove user:', targetUser.jid);
-          // Correct Baileys removal method
-          await ctx.conn.groupParticipantsUpdate(
+          // Use safe group operation that handles @lid JIDs properly
+          await ctx.conn.safeGroupOperation(
             ctx.chat,
             [targetUser.jid],
             'remove'
           );
           
+          // Use the same mention logic for kick message
+          const kickMentions = targetUser.jid.includes('@lid') ? [targetUser.jid] : [targetUser.id + '@s.whatsapp.net'];
+          
           await ctx.conn.sendMessage(ctx.chat, {
-            text: `تم طرد ${targetUser.mention} لتجاوز الحد الأقصى للإنذارات (5/5)`
-          }, {
-            mentions: [targetUser.jid]
+            text: `تم طرد ${targetUser.mention.text} لتجاوز الحد الأقصى للإنذارات (3/3)`,
+            mentions: kickMentions
           });
           
           // Clear warnings after kick
@@ -219,17 +336,18 @@ async function handleViewWarnings(ctx, targetUserId) {
     let message = '╭─🚨 سجل الإنذارات ─╮\n';
     message += `📊 العدد الكلي: ${warnings.warnings.length}/5\n\n`;
     
+    // Get all unique issuers for mentions
+    const issuers = warnings.warnings.map(warn => warn.issuer);
+    const uniqueIssuers = [...new Set(issuers)];
+    
     warnings.warnings.forEach((warn, index) => {
+      const issuerMention = formatUserForMention(warn.issuer);
       message += `${index + 1}. ⚠️ ${warn.cause}\n`;
       message += `   📅 ${new Date(warn.date).toLocaleString('ar-EG')}\n`;
-      message += `   👤 بواسطة: @${getPhoneNumber(warn.issuer)}\n\n`;
+      message += `   👤 بواسطة: ${issuerMention.text}\n\n`;
     });
     
     message += '╰────────────────╯';
-
-    // Get all issuers for mentions
-    const issuers = warnings.warnings.map(warn => warn.issuer);
-    const uniqueIssuers = [...new Set(issuers)];
 
     await ctx.conn.sendMessage(ctx.chat, {
       text: message
@@ -290,10 +408,12 @@ async function handleDeleteOneWarning(ctx) {
       });
     }
 
+    // Use consistent mention logic
+    const deleteMentions = targetUser.jid.includes('@lid') ? [targetUser.jid] : [targetUser.id + '@s.whatsapp.net'];
+    
     await ctx.conn.sendMessage(ctx.chat, {
-      text: `✅ تم حذف آخر إنذار من ${targetUser.mention}\n📊 الإنذارات المتبقية: ${remainingCount}/5`
-    }, {
-      mentions: [targetUser.jid]
+      text: `✅ تم حذف آخر إنذار من ${targetUser.mention.text}\n📊 الإنذارات المتبقية: ${remainingCount}/5`,
+      mentions: deleteMentions
     });
 
   } catch (error) {
@@ -336,10 +456,12 @@ async function handleClearAllWarnings(ctx) {
       return ctx.reply('✔️ لا يوجد إنذارات لحذفها');
     }
 
+    // Use consistent mention logic
+    const clearMentions = targetUser.jid.includes('@lid') ? [targetUser.jid] : [targetUser.id + '@s.whatsapp.net'];
+    
     await ctx.conn.sendMessage(ctx.chat, {
-      text: `✅ تم حذف جميع إنذارات ${targetUser.mention}`
-    }, {
-      mentions: [targetUser.jid]
+      text: `✅ تم حذف جميع إنذارات ${targetUser.mention.text}`,
+      mentions: clearMentions
     });
 
   } catch (error) {
@@ -371,18 +493,43 @@ export const warningHandler = async (ctx, { command }) => {
         const testUser = resolveTargetUser(ctx);
         const testAdmin = await validateAdmin(ctx);
         
-        ctx.reply(`🧪 Test Results:
+        let debugMessage = `🧪 Test Results:
 Admin: ${testAdmin}
-Target User: ${testUser ? JSON.stringify(testUser) : 'None'}
 Is Group: ${ctx.isGroup}
 Command: ${command}
 DB State: ${mongoose.connection.readyState}
-Context: ${JSON.stringify({
-  sender: ctx.sender,
-  chat: ctx.chat,
-  quoted: !!ctx.quoted,
-  mentionedJid: ctx.mentionedJid?.length || 0
-})}`);
+Sender: ${ctx.sender}
+Chat: ${ctx.chat}
+Quoted: ${!!ctx.quoted}
+MentionedJid Count: ${ctx.mentionedJid?.length || 0}`;
+
+        if (testUser) {
+          debugMessage += `\n\n🔍 Target User Data:
+ID: ${testUser.id}
+Original JID: ${testUser.jid}
+Mention Text: ${testUser.mention.text}
+Possible JIDs: ${JSON.stringify(testUser.possibleJids)}`;
+
+          // Test all possible mention formats
+          for (let i = 0; i < testUser.possibleJids.length; i++) {
+            const testJid = testUser.possibleJids[i];
+            try {
+              await ctx.conn.sendMessage(ctx.chat, {
+                text: `🧪 Test ${i + 1}: Trying to mention ${testUser.mention.text} with JID: ${testJid}`
+              }, {
+                mentions: [testJid]
+              });
+              console.log(`Test ${i + 1} sent successfully with JID:`, testJid);
+            } catch (error) {
+              console.log(`Test ${i + 1} failed with JID:`, testJid, 'Error:', error.message);
+            }
+          }
+          
+          // Send debug info
+          ctx.reply(debugMessage);
+        } else {
+          ctx.reply(debugMessage + '\n\n❌ No target user found');
+        }
         break;
         
       case 'انذار':
@@ -395,7 +542,7 @@ Context: ${JSON.stringify({
         break;
         
       case 'انذاراتي':
-        const myUserId = getPhoneNumber(ctx.sender);
+        const myUserId = ctx.sender.split('@')[0];
         await handleViewWarnings(ctx, myUserId);
         break;
         

@@ -726,7 +726,12 @@ Keep it simple and sweet, no long explanations!`;
            // Direct command checks like m.text === '.command'
            /m\.text\s*===?\s*['"]\\.?([^'"]+)['"]/g,
            // Regex test patterns
-           /\/\^\.([^$\/]+)\$\/i\.test/g
+           /\/\^\.([^$\/]+)\$\/i\.test/g,
+           // New patterns for common command formats
+           /command:\s*['"]([^'"]+)['"]/g,
+           /commands:\s*\[([^\]]+)\]/g,
+           /\.commands\s*=\s*\[([^\]]+)\]/g,
+           /\.command\s*=\s*['"]([^'"]+)['"]/g
        ];
 
        patterns.forEach(pattern => {
@@ -747,7 +752,7 @@ Keep it simple and sweet, no long explanations!`;
            .filter(cmd => cmd && cmd.length > 0 && cmd.length < 20)
            .map(cmd => cmd.startsWith('.') ? cmd : '.' + cmd);
 
-       return uniqueCommands.slice(0, 10); // Limit to 10 commands max
+       return uniqueCommands.length > 0 ? uniqueCommands.slice(0, 10) : ['لا يوجد أوامر محددة'];
    }
 
     async saveSearchHistory(userId, query, type, resultCount) {

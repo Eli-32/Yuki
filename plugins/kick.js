@@ -49,43 +49,33 @@ const handler = async (m, {conn, usedPrefix, text, participants}) => {
         
         let targets = [];
         
+        let cleanNumber;
+        let properJid;
         if (!text && !m.quoted) {
             return m.reply(`❌ *الرجاء تحديد العضو:*\n• الرد على رسالة العضو\n• منشن العضو\n• كتابة رقم العضو`);
         }
-        
         try {
             if (m.mentionedJid && m.mentionedJid.length > 0) {
-                targets = m.mentionedJid.filter(jid => !areJidsSameUser(jid, conn.user.id));
-            }
-            else if (m.quoted?.sender) {
-                targets = [m.quoted.sender];
-            }
-            else if (text) {
-                if (text.includes('@lid')) {
-                    const lidMatch = text.match(/(\d+@lid)/);
-                    if (lidMatch) {
-                        targets = [lidMatch[1]];
-                    }
-                } else if (text.match(/@/g) && !isNaN(text.split('@')[1])) {
-                    const number = text.split('@')[1];
-                    targets = [normalizeJid(number)];
-                } else if (text.match(/\d+@lid/)) {
-                    const lidMatch = text.match(/(\d+@lid)/);
-                    if (lidMatch) {
-                        targets = [lidMatch[1]];
-                    }
-                } else if (!isNaN(text)) {
-                    const number = text;
-                    targets = [normalizeJid(number)];
+                cleanNumber = m.mentionedJid[0].replace(/@.*$/, '');
+                properJid = cleanNumber + '@s.whatsapp.net';
+                targets = [properJid];
+            } else if (m.quoted?.sender) {
+                cleanNumber = m.quoted.sender.replace(/@.*$/, '');
+                properJid = cleanNumber + '@s.whatsapp.net';
+                targets = [properJid];
+            } else if (text) {
+                const numberMatch = text.match(/@(\d+)/);
+                if (numberMatch) {
+                    cleanNumber = numberMatch[1];
                 } else {
-                    const phoneNumbers = text.match(/\d+/g);
-                    if (phoneNumbers) {
-                        targets = phoneNumbers.map(num => num + '@s.whatsapp.net');
-                    }
+                    cleanNumber = text.replace(/[^\d]/g, '');
+                }
+                if (cleanNumber) {
+                    properJid = cleanNumber + '@s.whatsapp.net';
+                    targets = [properJid];
                 }
             }
-            
-            if (targets.length === 0) {
+            if (!targets || targets.length === 0) {
                 return m.reply("❌ *لم يتم العثور على أعضاء صالحين للإخراج*");
             }
             
